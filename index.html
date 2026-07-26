@@ -87,12 +87,12 @@ tr:hover td{background:#f6fafd}
 .badge2.b1{background:#fdecea;color:var(--red)}.badge2.b2{background:#fef3e2;color:var(--orange)}.badge2.b3{background:#eafaf1;color:var(--green)}
 .info-pedido{background:#eef3f8;border-radius:8px;padding:10px 14px;font-size:12px;color:var(--navy2);display:flex;gap:22px;flex-wrap:wrap;margin-bottom:12px}
 .info-pedido b{color:var(--navy)}
-.modal-bg{display:none;position:fixed;inset:0;background:rgba(26,46,74,.55);z-index:200;align-items:center;justify-content:center}
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(26,46,74,.55);z-index:200;align-items:flex-start;justify-content:center;overflow-y:auto;padding:18px 0}
 .modal-bg.on{display:flex}
-.modal{background:#fff;border-radius:12px;width:min(440px,92vw);box-shadow:0 10px 40px rgba(0,0,0,.3);overflow:hidden}
-.modal .mh{background:var(--navy);color:#fff;padding:13px 18px;font-size:14px;font-weight:700;display:flex;justify-content:space-between;align-items:center}
+.modal{background:#fff;border-radius:12px;width:min(520px,94vw);box-shadow:0 10px 40px rgba(0,0,0,.3);overflow:hidden;max-height:92vh;display:flex;flex-direction:column;margin:auto}
+.modal .mh{background:var(--navy);color:#fff;padding:13px 18px;font-size:14px;font-weight:700;display:flex;justify-content:space-between;align-items:center;flex:0 0 auto}
 .modal .mh .x{cursor:pointer;opacity:.8}.modal .mh .x:hover{opacity:1}
-.modal .mb{padding:18px}
+.modal .mb{padding:18px;overflow-y:auto;flex:1 1 auto}
 .pay-btn{padding:4px 10px;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;background:var(--green);color:#fff}
 .flink{cursor:pointer;color:var(--blue);font-weight:700;text-decoration:underline}
 .flink:hover{color:var(--navy)}
@@ -119,7 +119,12 @@ html{-webkit-text-size-adjust:100%}
   .card,.kpi{box-shadow:none;border:1px solid #ccc;break-inside:avoid}
   .section-hdr,.mcell,.pill,.badge2,th{-webkit-print-color-adjust:exact;print-color-adjust:exact}
   table{font-size:10px}
+  /* impresión de la FACTURA: solo se ve la hoja de factura */
+  body.printing-fac>*:not(#facturaPrint){display:none!important}
+  body.printing-fac #facturaPrint{position:static!important;left:0!important;width:100%!important}
+  body.printing-fac .fac-overlay{display:none!important}
 }
+@page fac{size:letter portrait;margin:1.2cm}
 @media(max-width:640px){
   .top-header{padding:11px 14px;gap:10px}
   .top-header h1{font-size:15px}.top-header p{font-size:10px}
@@ -152,6 +157,33 @@ html{-webkit-text-size-adjust:100%}
 .mleg i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:5px;vertical-align:-1px}
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--navy);color:#fff;padding:12px 22px;border-radius:9px;font-size:13px;z-index:300;box-shadow:0 6px 24px rgba(0,0,0,.3);opacity:0;transition:.25s;pointer-events:none}
 .toast.on{opacity:1}
+/* --- Editor de factura imprimible --- */
+.fac-overlay{display:none;position:fixed;inset:0;background:rgba(26,46,74,.6);z-index:250;overflow:auto;padding:18px}
+.fac-overlay.on{display:block}
+.fac-editor{background:#fff;max-width:900px;margin:0 auto;border-radius:10px;overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,.35)}
+.fac-editor .mh{background:var(--navy);color:#fff;padding:12px 18px;font-size:14px;font-weight:700;display:flex;justify-content:space-between;align-items:center}
+.fac-editor .mb{padding:16px 18px}
+.fac-editrow{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px}
+.fac-editrow .fld input{min-width:110px}
+.fac-itbl{width:100%;border-collapse:collapse;font-size:12px;margin:8px 0}
+.fac-itbl th{background:#eef3f8;color:var(--navy2);font-size:10px;padding:6px 6px;border-bottom:2px solid var(--bd)}
+.fac-itbl td{padding:3px 4px;border-bottom:1px solid var(--bg)}
+.fac-itbl input{width:100%;padding:5px 6px;border:1px solid var(--bd);border-radius:5px;font-size:12px;text-align:right}
+.fac-itbl input.txt{text-align:left}
+.fac-tot-edit{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;margin-top:8px}
+.fac-tot-edit .fld{width:150px}
+/* --- Hoja de factura para impresión (copia exacta del formato Caleva) --- */
+#facturaPrint{position:fixed;left:-99999px;top:0;width:216mm;font-family:Tahoma,Arial,sans-serif;color:#000;background:#fff}
+#facturaPrint table{border-collapse:collapse;table-layout:fixed;width:202mm;margin-left:6mm}
+#facturaPrint td{font-size:8pt;padding:0 2px;vertical-align:middle;overflow:hidden;line-height:1.05;border:0;background:#fff}
+#facturaPrint tr:hover td{background:#fff}
+#facturaPrint .fx-c{text-align:center}
+#facturaPrint .fx-r{text-align:right}
+#facturaPrint .fx-l{text-align:left}
+#facturaPrint .fx-b{font-weight:bold}
+#facturaPrint .fx-title{font-size:20pt;text-align:center}
+#facturaPrint .fx-big{font-size:10pt}
+#facturaPrint .fx-cli{font-size:11pt}
 </style>
 </head>
 <body>
@@ -203,6 +235,8 @@ html{-webkit-text-size-adjust:100%}
 </div>
 
 <div class="modal-bg" id="modalBg"><div class="modal"><div class="mh"><span id="modalTit"></span><span class="x" onclick="UI.cerrarModal()">&#10005;</span></div><div class="mb" id="modalBody"></div></div></div>
+<div class="fac-overlay" id="facOverlay"><div class="fac-editor"><div class="mh"><span>Factura para imprimir</span><span class="x" style="cursor:pointer" onclick="Factura.cerrar()">&#10005;</span></div><div class="mb" id="facEditor"></div></div></div>
+<div id="facturaPrint"></div>
 <div class="toast" id="toast"></div>
 
 <div class="foot" id="foot"></div>
@@ -350,6 +384,7 @@ var UI={
       '<div class="info-pedido" style="margin-bottom:12px"><span>Base <b>'+money(f.base)+'</b></span><span>IVA <b>'+money(f.iva)+'</b></span><span>Total <b>'+money(f.total)+'</b></span><span>Cobrado <b>'+money(f.pagos)+'</b></span><span>Saldo <b style="color:'+(f.porCobrar>0.01?'var(--red)':'var(--green)')+'">'+money(f.porCobrar)+'</b></span></div>'+
       '<table class="itemtbl"><thead><tr><th>HES</th><th>Estación</th><th class="center">Val</th><th>Descripción</th><th style="width:110px">Base</th></tr></thead><tbody>'+(lin||'<tr><td colspan="5" class="empty">Sin líneas</td></tr>')+'</tbody></table>'+
       '<div class="frow" style="margin-top:14px">'+
+      '<button class="btn o" onclick="UI.cerrarModal();Factura.desdeFactura(\''+fac+'\')">🧾 Imprimir PDF</button>'+
       (f.porCobrar>0.01?'<button class="btn g" onclick="UI.cerrarModal();UI.abrirPago(\''+fac+'\')">Registrar pago</button>':'')+
       '<button class="btn r" onclick="UI.eliminarFactura(\''+fac+'\')">Eliminar factura</button>'+
       '<button class="btn gr" onclick="UI.cerrarModal()">Cerrar</button></div>'+
@@ -614,7 +649,7 @@ var Proc={
   facturar:function(pedido,idxs,facturaNum,fecha,tasa){
     var ped=pedidoPorNum(pedido);if(!ped)return {err:'Pedido no encontrado.'};
     if(idxs.length===0)return {err:'No hay ítems seleccionados.'};
-    if(idxs.length>9)return {err:'Máximo 9 HES por factura (límite de impresión).'};
+    if(idxs.length>13)return {err:'Máximo 13 HES por factura (límite de impresión).'};
     if(Store.data.facturas.some(f=>String(f.factura)===String(facturaNum)))return {err:'La factura '+facturaNum+' ya existe.'};
     var d=new Date(fecha+'T00:00:00');
     var venc=new Date(d.getTime()+ (ped.plazo||0)*86400000);
@@ -800,19 +835,24 @@ var Fact={
     var today=new Date().toISOString().slice(0,10);
     var lastTasa=(function(){var t=0;Store.data.facturas.forEach(f=>{if(f.tasa)t=f.tasa;});return t?(+t).toFixed(4):'';})();
     document.getElementById('tab-fact').innerHTML=
-      '<div class="form"><h3>Generar factura (máximo 9 HES, un solo pedido)</h3>'+
+      '<div class="form"><h3>Generar factura (máximo 13 HES, un solo pedido)</h3>'+
       '<div class="frow"><div class="fld"><label>Pedido</label><select id="fcPed" class="wide" onchange="Fact.render()">'+opts+'</select></div>'+
       '<div class="fld"><label>N° Factura</label><input id="fcNum" style="min-width:110px"></div>'+
       '<div class="fld"><label>Fecha</label><input id="fcFecha" type="date" value="'+today+'"></div>'+
       '<div class="fld"><label>Tasa BCV</label><input id="fcTasa" type="number" step="0.0001" value="'+lastTasa+'" style="min-width:120px"></div></div>'+info+
       '<table class="itemtbl"><thead><tr><th style="width:34px">✔</th><th>Estación</th><th class="center">Val</th><th>HES</th><th style="width:120px">Monto</th><th>Descripción</th></tr></thead><tbody id="factBody">'+(rows||'<tr><td colspan="6" class="empty">'+(pedSel?'No hay ítems con HES por facturar en este pedido.':'Elija un pedido para ver sus ítems con HES.')+'</td></tr>')+'</tbody></table>'+
-      '<div class="frow" style="margin-top:10px"><div class="info-pedido" id="fcResumen" style="margin:0"><span>Seleccionadas: <b id="fcN">0</b> / 9</span><span>Total base: <b id="fcTot">$0.00</b></span></div><span style="flex:1"></span><button class="btn g" onclick="Fact.generar()">Generar factura</button></div>'+
-      '<div class="hint">Cada HES es una línea de la factura. Se validan: un solo pedido, máximo 9 HES, y numero de factura único.</div></div>';
+      '<div class="frow" style="margin-top:10px"><div class="info-pedido" id="fcResumen" style="margin:0"><span>Seleccionadas: <b id="fcN">0</b> / 13</span><span>Total base: <b id="fcTot">$0.00</b></span></div><span style="flex:1"></span><button class="btn g" onclick="Fact.generar()">Generar factura</button></div>'+
+      '<div class="hint">Cada HES es una línea de la factura. Se validan: un solo pedido, máximo 13 HES, y numero de factura único.</div></div>'+
+      '<div class="form" style="margin-top:16px"><h3>Imprimir factura existente (PDF)</h3>'+
+      '<div class="frow"><div class="fld"><label>N° de factura (ya creada en DATOS)</label><input id="fcImp" list="facDL" placeholder="ej. 406" style="min-width:170px"></div>'+
+      '<datalist id="facDL">'+Store.data.facturas.slice().sort(function(a,b){return String(b.factura).localeCompare(String(a.factura),undefined,{numeric:true});}).map(function(f){return '<option value="'+f.factura+'">';}).join('')+'</datalist>'+
+      '<button class="btn o" onclick="Factura.desdeFactura(document.getElementById(\'fcImp\').value)">🧾 Factura para imprimir</button></div>'+
+      '<div class="hint">Solo facturas existentes en DATOS. Podrá ajustar cantidades y forzar totales antes del PDF, sin alterar los datos.</div></div>';
     if(pedSel)document.getElementById('fcPed').value=pedSel;
   },
   upd:function(){var tb=document.getElementById('factBody');if(!tb)return;var n=0,tot=0;
     [...tb.rows].forEach(r=>{var c=r.querySelector('.fchk');if(c&&c.checked){n++;tot+=+r.dataset.base||0;}});
-    document.getElementById('fcN').textContent=n;document.getElementById('fcN').style.color=n>9?'var(--red)':'';
+    document.getElementById('fcN').textContent=n;document.getElementById('fcN').style.color=n>13?'var(--red)':'';
     document.getElementById('fcTot').textContent=money(tot);
   },
   generar:function(){var tb=document.getElementById('factBody');if(!tb){toast('Elija un pedido');return;}
@@ -824,6 +864,156 @@ var Fact={
     UI.postWrite();toast('Factura '+num+' generada con '+idxs.length+' HES');
   }
 };
+/* ---------- FACTURA IMPRIMIBLE (plantilla + editor) ---------- */
+var FISCAL={senores:'TELEFONICA VENEZOLANA, C.A.',rif:'J-00343994-0',dir1:'Av Francisco de Miranda CC El Parque Nivel 6 OF 6 Urb',dir2:'Los Palos Grandes Caracas (Chacao) Miranda Venezuela Tlf: 0212-2009711',cond:'DE CONTADO'};
+function ve(n,d){n=+n||0;return n.toLocaleString('es-VE',{minimumFractionDigits:d,maximumFractionDigits:d});}
+var Factura={
+  it:[], meta:{},
+  /* Abre el editor para una factura EXISTENTE en DATOS (por su numero). */
+  desdeFactura:function(num){
+    num=String(num||'').trim();
+    if(!num){toast('Indique el N° de factura');return;}
+    var f=Store.data.facturas.find(function(x){return String(x.factura)===num;});
+    if(!f){toast('La factura '+num+' no existe en DATOS. Genérela primero.');return;}
+    var lin=f.lineas||[];
+    if(!lin.length){toast('La factura '+num+' no tiene líneas.');return;}
+    if(lin.length>13){toast('La factura tiene más de 13 líneas.');return;}
+    var ped=pedidoPorNum(f.pedido);
+    var pmonto=ped?(+ped.monto||0):0;
+    this.meta={nfact:num,fecha:f.fecha,tasa:f.tasa,moneda:(ped?ped.moneda:f.moneda)||'USD',pmonto:pmonto};
+    this.it=lin.map(function(l){var b=+l.base||0;var cant=pmonto>0?b/pmonto:0;
+      return {desc:l.desc||'',hes:l.hes||'',pedido:pedNum(f.pedido),precio:pmonto,cant:cant,total:b};});
+    this.render();
+    document.getElementById('facOverlay').classList.add('on');
+  },
+  cerrar:function(){document.getElementById('facOverlay').classList.remove('on');},
+  render:function(){
+    var self=this;
+    var rows=this.it.map(function(l,i){return '<tr>'+
+      '<td class="txt" style="width:34%"><input class="txt" value="'+String(l.desc).replace(/"/g,'&quot;')+'" oninput="Factura.set('+i+',\'desc\',this.value)"></td>'+
+      '<td style="width:13%"><input class="txt" value="'+String(l.hes)+'" oninput="Factura.set('+i+',\'hes\',this.value)"></td>'+
+      '<td style="width:15%"><input type="number" step="0.0001" value="'+l.cant+'" oninput="Factura.calc('+i+',\'cant\',this.value)"></td>'+
+      '<td style="width:16%"><input type="number" step="0.01" value="'+l.precio+'" readonly style="background:#eef1f5" title="Fijo: monto del pedido"></td>'+
+      '<td style="width:16%"><input type="number" step="0.01" value="'+l.total+'" oninput="Factura.calc('+i+',\'total\',this.value)"></td></tr>';}).join('');
+    var neto=this.it.reduce(function(a,l){return a+(+l.total||0);},0);
+    var iva=Math.round(neto*0.16*100)/100, tot=Math.round((neto+iva)*100)/100;
+    document.getElementById('facEditor').innerHTML=
+      '<div class="fac-editrow"><div class="fld"><label>N° Factura</label><input id="feNum" value="'+(this.meta.nfact||'')+'" readonly style="background:#eef1f5"></div>'+
+      '<div class="fld"><label>Fecha</label><input id="feFecha" type="date" value="'+(this.meta.fecha||new Date().toISOString().slice(0,10))+'"></div>'+
+      '<div class="fld"><label>Moneda</label><input id="feMon" value="'+(this.meta.moneda||'USD')+'" style="min-width:70px"></div>'+
+      '<div class="fld"><label>Espacio superior (cm)</label><input id="feTop" type="number" step="0.1" value="'+(localStorage.getItem("facTop")||"5.0")+'" style="min-width:90px"></div></div>'+
+      '<div class="hint" style="margin-bottom:6px">P. Unitario = monto del pedido (fijo). Ajuste cantidad (4 dec) o fuerce el TOTAL de una línea / los totales de abajo para cuadrar el centavo con el cliente. <b>Solo afecta la factura impresa, no los datos.</b></div>'+
+      '<table class="fac-itbl"><thead><tr><th>Descripción</th><th>HES</th><th>Cantidad</th><th>P.Unit (pedido)</th><th>Total</th></tr></thead><tbody>'+rows+'</tbody></table>'+
+      '<div class="fac-tot-edit">'+
+      '<div class="fld"><label>Sub-total (neto)</label><input id="feNeto" type="number" step="0.01" value="'+neto.toFixed(2)+'" oninput="Factura.recalcTax()"></div>'+
+      '<div class="fld"><label>IVA 16%</label><input id="feIva" type="number" step="0.01" value="'+iva.toFixed(2)+'" oninput="Factura.recalcTot()"></div>'+
+      '<div class="fld"><label>Total</label><input id="feTot" type="number" step="0.01" value="'+tot.toFixed(2)+'"></div>'+
+      '<div class="fld"><label>Tasa BCV (4 dec)</label><input id="feTasa" type="number" step="0.0001" value="'+(this.meta.tasa?(+this.meta.tasa).toFixed(4):'')+'"></div></div>'+
+      '<div class="fac-editrow" style="margin-top:12px;justify-content:flex-end"><button class="btn gr" onclick="Factura.cerrar()">Cancelar</button><button class="btn o" onclick="Factura.imprimir()">🖨 Vista e imprimir PDF</button></div>';
+  },
+  set:function(i,k,v){this.it[i][k]=v;},
+  calc:function(i,k,v){
+    var l=this.it[i];
+    if(k==='cant'){l.cant=+v||0;l.total=Math.round(l.cant*l.precio*100)/100;}
+    else if(k==='total'){l.total=+v||0;}
+    this.refreshTot();
+  },
+  refreshTot:function(){
+    var neto=this.it.reduce(function(a,l){return a+(+l.total||0);},0);
+    var iva=Math.round(neto*0.16*100)/100, tot=Math.round((neto+iva)*100)/100;
+    var e=document.getElementById('feNeto');if(e)e.value=neto.toFixed(2);
+    var ei=document.getElementById('feIva');if(ei)ei.value=iva.toFixed(2);
+    var et=document.getElementById('feTot');if(et)et.value=tot.toFixed(2);
+    var tb=document.querySelectorAll('#facEditor .fac-itbl tbody tr');
+    this.it.forEach(function(l,i){if(tb[i]){var ins=tb[i].querySelectorAll('input');ins[4].value=(+l.total).toFixed(2);}});
+  },
+  recalcTax:function(){var neto=+document.getElementById('feNeto').value||0;var iva=Math.round(neto*0.16*100)/100;document.getElementById('feIva').value=iva.toFixed(2);document.getElementById('feTot').value=(neto+iva).toFixed(2);},
+  recalcTot:function(){var neto=+document.getElementById('feNeto').value||0;var iva=+document.getElementById('feIva').value||0;document.getElementById('feTot').value=(neto+iva).toFixed(2);},
+  imprimir:function(){
+    var nfact=document.getElementById('feNum').value.trim();
+    var fecha=document.getElementById('feFecha').value;
+    var mon=document.getElementById('feMon').value.trim()||'USD';
+    var top=+document.getElementById('feTop').value||5.0;
+    try{localStorage.setItem('facTop',String(top));}catch(e){}
+    var neto=+document.getElementById('feNeto').value||0, iva=+document.getElementById('feIva').value||0, tot=+document.getElementById('feTot').value||0;
+    var tasa=+document.getElementById('feTasa').value||0;
+    var fdmy=fecha?fecha.split('-').reverse().join('-'):'';
+    var d={nfact:nfact,fdmy:fdmy,mon:mon,top:top,neto:neto,iva:iva,tot:tot,tasa:tasa,it:this.it};
+    document.getElementById('facturaPrint').innerHTML=this.buildSheet(d);
+    document.body.classList.add('printing-fac');
+    window.print();
+    setTimeout(function(){document.body.classList.remove('printing-fac');},500);
+  },
+  buildSheet:function(d){
+    var bT='0.5pt solid #000', bM='1.3pt solid #000';
+    var col='<colgroup><col style="width:5.22%"><col style="width:48.76%"><col style="width:5.0%"><col style="width:8.36%"><col style="width:14.84%"><col style="width:17.81%"></colgroup>';
+    var H=[]; // filas
+    // 1) espacio membrete
+    H.push('<tr><td colspan="6" style="height:'+d.top+'cm;border:none"></td></tr>');
+    // 2) No. FACTURA (encima del titulo, alineado sobre P.UNITARIO)
+    H.push('<tr style="height:0.62cm"><td colspan="4" style="border:none"></td><td colspan="2" class="fx-b fx-l" style="border:none;font-size:12pt">No. FACTURA: '+esc(d.nfact)+'</td></tr>');
+    // 3) TITULO
+    H.push('<tr style="height:0.68cm"><td colspan="6" class="fx-title" style="border:'+bM+'">FACTURA</td></tr>');
+    // 4) CLIENTE (izq col1-4) + FECHA (col5-6, rowspan 5)
+    var L=[
+      '<span class="fx-b">SEÑORES:</span> '+FISCAL.senores,
+      '<span class="fx-b">RIF:</span> '+FISCAL.rif,
+      '<span class="fx-b">DIRECCIÓN:</span> '+FISCAL.dir1,
+      FISCAL.dir2,
+      '<span class="fx-b">CONDICIONES DE PAGO:</span> '+FISCAL.cond
+    ];
+    for(var ci=0;ci<5;ci++){
+      var lb=(ci<4?'border-left:'+bT:'border-left:'+bT+';border-bottom:'+bT);
+      if(ci===0){
+        H.push('<tr style="height:0.42cm"><td colspan="4" class="fx-cli" style="'+lb+'">'+L[ci]+'</td>'+
+          '<td colspan="2" rowspan="5" class="fx-c" style="border:'+bT+'">FECHA: '+d.fdmy+'</td></tr>');
+      } else {
+        H.push('<tr style="height:0.42cm"><td colspan="4" class="fx-cli" style="'+lb+'">'+L[ci]+'</td></tr>');
+      }
+    }
+    // 9) ENCABEZADOS TABLA
+    function th(t){return '<td class="fx-c" style="border:'+bT+'">'+t+'</td>';}
+    H.push('<tr style="height:0.42cm">'+th('No.')+th('D E S C R I P C I Ó N')+th('UN.')+th('CANT.')+th('P.UNITARIO')+th('P.TOTAL')+'</tr>');
+    // 10) POR CONCEPTO
+    H.push('<tr style="height:0.5cm"><td style="border-left:'+bT+'"></td><td style="border-left:'+bT+';border-right:'+bT+'">Por concepto de cancelación de la VALUACION, correspondiente a:</td><td style="border-right:'+bT+'"></td><td style="border-right:'+bT+'"></td><td style="border-right:'+bT+'"></td><td style="border-right:'+bT+'"></td></tr>');
+    // 11) ITEMS (9 slots, 2 filas c/u)
+    function cellB(txt,cls){return '<td class="'+(cls||'')+'" style="border-left:'+bT+';border-right:'+bT+'">'+(txt||'')+'</td>';}
+    var SLOTS=14, RH='0.40cm';
+    for(var i=0;i<SLOTS;i++){
+      var l=this.it[i];
+      if(l){
+        var desc=esc(l.desc)+(l.pedido?', pedido No. '+l.pedido:'');
+        H.push('<tr style="height:'+RH+'">'+cellB((i+1),'fx-c')+cellB(desc,'fx-l')+cellB('SG','fx-l')+cellB(ve(+l.cant,4),'fx-r')+cellB(ve(+l.precio,2),'fx-r')+cellB(ve(+l.total,2),'fx-r')+'</tr>');
+        H.push('<tr style="height:'+RH+'">'+cellB('','fx-c')+cellB('HES:'+esc(l.hes),'fx-l fx-b')+cellB('')+cellB('')+cellB('')+cellB('')+'</tr>');
+      } else {
+        H.push('<tr style="height:'+RH+'">'+cellB('')+cellB('')+cellB('')+cellB('')+cellB('')+cellB('')+'</tr>');
+        H.push('<tr style="height:'+RH+'">'+cellB('')+cellB('')+cellB('')+cellB('')+cellB('')+cellB('')+'</tr>');
+      }
+    }
+    // 29) TASA BCV (caja en col2, medium)
+    var sTasa=ve(d.tasa,4);
+    H.push('<tr style="height:0.45cm"><td style="border-left:'+bT+'"></td><td class="fx-c fx-b" style="border:'+bM+'">TASA BCV '+d.fdmy+' : '+sTasa+' Bs/USD</td><td style="border-right:'+bT+'"></td><td style="border-left:'+bT+';border-right:'+bT+'"></td><td style="border-left:'+bT+';border-right:'+bT+'"></td><td style="border-right:'+bT+'"></td></tr>');
+    // 30-32) EQUIVALENCIAS
+    function eqRow(txt,bottom){return '<tr style="height:0.42cm"><td style="border-left:'+bT+'"></td><td class="fx-big" style="border-left:'+bT+';border-right:'+bT+(bottom?';border-bottom:'+bT:'')+'">'+txt+'</td><td style="border-right:'+bT+(bottom?';border-bottom:'+bT:'')+'"></td><td style="border-left:'+bT+';border-right:'+bT+(bottom?';border-bottom:'+bT:'')+'"></td><td style="border-left:'+bT+';border-right:'+bT+(bottom?';border-bottom:'+bT:'')+'"></td><td style="border-right:'+bT+(bottom?';border-bottom:'+bT:'')+'"></td></tr>';}
+    H.push(eqRow('$'+ve(d.neto,2)+' x '+sTasa+' : BsD '+ve(d.neto*d.tasa,2),false));
+    H.push(eqRow('$'+ve(d.iva,2)+' x '+sTasa+' : BsD '+ve(d.iva*d.tasa,2),false));
+    H.push(eqRow('$'+ve(d.tot,2)+' x '+sTasa+' : BsD '+ve(d.tot*d.tasa,2),true));
+    // 33-35) TOTALES
+    function totRow(lbl,val,bottom){var bb=bottom?';border-bottom:'+bT:'';
+      return '<tr style="height:0.45cm"><td style="border-left:'+bT+bb+'"></td>'+
+        '<td colspan="4" class="fx-r fx-b fx-big" style="border-left:'+bT+';border-right:'+bT+bb+'">'+lbl+'</td>'+
+        '<td class="fx-r fx-b fx-big" style="border-right:'+bT+bb+'">'+val+'</td></tr>';}
+    H.push(totRow('TOTAL NETO '+d.mon+' ..........',ve(d.neto,2),false));
+    H.push(totRow('IVA 16% '+d.mon+' ..........',ve(d.iva,2),false));
+    H.push(totRow('TOTAL '+d.mon+' ..........',ve(d.tot,2),true));
+    // 36) espacio firmas + firmas
+    H.push('<tr style="height:0.9cm"><td colspan="6" style="border-left:'+bM+';border-right:'+bM+'"></td></tr>');
+    H.push('<tr style="height:0.5cm"><td colspan="3" class="fx-l" style="border-left:'+bM+';border-bottom:'+bM+';padding-left:1.5cm">COMPRADOR</td><td colspan="3" class="fx-r" style="border-right:'+bM+';border-bottom:'+bM+';padding-right:0.8cm">VENDEDOR</td></tr>');
+    return '<table>'+col+H.join('')+'</table>';
+  }
+};
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
 /* ---------- VISTA: ANÁLISIS DE COBRANZA ---------- */
 var Cobranza={
   render:function(F){
