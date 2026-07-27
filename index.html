@@ -157,6 +157,15 @@ html{-webkit-text-size-adjust:100%}
 .mleg i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:5px;vertical-align:-1px}
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--navy);color:#fff;padding:12px 22px;border-radius:9px;font-size:13px;z-index:300;box-shadow:0 6px 24px rgba(0,0,0,.3);opacity:0;transition:.25s;pointer-events:none}
 .toast.on{opacity:1}
+.login-bg{display:none;position:fixed;inset:0;background:linear-gradient(135deg,var(--navy),var(--blue));z-index:400;align-items:center;justify-content:center;padding:20px}
+.login-bg.on{display:flex}
+.login-card{background:#fff;border-radius:14px;padding:26px 24px;width:min(360px,92vw);box-shadow:0 20px 60px rgba(0,0,0,.4)}
+.login-card h2{color:var(--navy);font-size:18px;text-align:center;margin-bottom:16px}
+.login-card .fld{display:block;margin-bottom:12px}
+.login-card .fld label{display:block;font-size:11px;color:var(--mut);text-transform:uppercase;font-weight:600;margin-bottom:4px}
+.login-card .fld input{width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--bd);border-radius:8px;font-size:14px}
+.login-card .fld input:focus{outline:2px solid var(--cyan);border-color:var(--cyan)}
+.login-msg{color:var(--red);font-size:12px;min-height:16px;margin:2px 0 8px;text-align:center}
 /* --- Editor de factura imprimible --- */
 .fac-overlay{display:none;position:fixed;inset:0;background:rgba(26,46,74,.6);z-index:250;overflow:auto;padding:18px}
 .fac-overlay.on{display:block}
@@ -215,6 +224,7 @@ html{-webkit-text-size-adjust:100%}
     <select id="selAnio" onchange="UI.render();UI.savePrefs()"></select>
     <input id="txtBuscar" placeholder="Buscar factura, pedido, HES, descripci&oacute;n..." style="min-width:260px" oninput="UI.render()">
     <span id="cloudWrap" style="display:none;align-items:center;gap:6px;font-size:11px;color:var(--mut)"><span id="cloudDot" style="width:10px;height:10px;border-radius:50%;background:#95a5a6"></span><span id="cloudTxt">solo local</span><button class="btn gr" style="padding:5px 10px" onclick="Store.reload()">&#8635; Recargar nube</button></span>
+    <span id="userWrap" style="display:none;align-items:center;gap:6px;font-size:11px;color:var(--mut)">&#128100; <b id="userEmail"></b><button class="btn r" style="padding:5px 10px" onclick="UI.logout()">Salir</button></span>
     <span style="flex:1"></span>
     <button class="btn o" onclick="window.print()">&#128424; PDF de esta pesta&ntilde;a</button>
     <button class="btn g" onclick="Export.toExcel()">&#128203; Exportar a Excel</button>
@@ -232,6 +242,17 @@ html{-webkit-text-size-adjust:100%}
   <div id="tab-fact" class="panel"></div>
 </div>
 
+<div class="login-bg" id="loginBg">
+  <div class="login-card">
+    <img src="data:image/png;base64,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" alt="Caleva" style="height:56px;display:block;margin:0 auto 10px;background:#fff;padding:4px 8px;border-radius:8px">
+    <h2>Iniciar sesi&oacute;n</h2>
+    <div class="fld"><label>Correo</label><input id="lgEmail" type="email" autocomplete="username" placeholder="usuario@correo.com"></div>
+    <div class="fld"><label>Contrase&ntilde;a</label><input id="lgPass" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter')UI.doLogin()"></div>
+    <div id="lgMsg" class="login-msg"></div>
+    <button class="btn g" id="lgBtn" onclick="UI.doLogin()" style="width:100%">Entrar</button>
+    <div class="hint" style="text-align:center;margin-top:12px">Acceso restringido a usuarios autorizados de Corporaci&oacute;n Caleva.</div>
+  </div>
+</div>
 <div class="modal-bg" id="modalBg"><div class="modal"><div class="mh"><span id="modalTit"></span><span class="x" onclick="UI.cerrarModal()">&#10005;</span></div><div class="mb" id="modalBody"></div></div></div>
 <div class="fac-overlay" id="facOverlay"><div class="fac-editor"><div class="mh"><span>Factura para imprimir</span><span class="x" style="cursor:pointer" onclick="Factura.cerrar()">&#10005;</span></div><div class="mb" id="facEditor"></div></div></div>
 <div id="facturaPrint"></div>
@@ -292,6 +313,31 @@ var SB={
   table:'caleva_estado'
 };
 
+/* ============ AUTENTICACIÓN (Supabase Auth · REST) ============ */
+var Auth={
+  session:null, KEY:'caleva_session',
+  base:function(){return (SB.url||'').replace(/\/+$/,'').replace(/\/rest\/v1$/,'');},
+  load:function(){try{this.session=JSON.parse(localStorage.getItem(this.KEY));}catch(e){this.session=null;}},
+  save:function(){try{localStorage.setItem(this.KEY,JSON.stringify(this.session));}catch(e){}},
+  clear:function(){this.session=null;try{localStorage.removeItem(this.KEY);}catch(e){}},
+  token:function(){return this.session&&this.session.access_token;},
+  email:function(){return this.session&&this.session.user&&this.session.user.email;},
+  expired:function(){if(!this.session||!this.session.access_token)return true;var exp=this.session.expires_at||0;return (exp*1000-Date.now())<60000;},
+  login:function(email,pass){
+    return fetch(this.base()+'/auth/v1/token?grant_type=password',{method:'POST',headers:{'apikey':SB.key,'Content-Type':'application/json'},body:JSON.stringify({email:email,password:pass})})
+      .then(function(r){return r.json();}).then(function(d){
+        if(d&&d.access_token){if(!d.expires_at)d.expires_at=Math.floor(Date.now()/1000)+(d.expires_in||3600);Auth.session=d;Auth.save();return {ok:true};}
+        return {err:(d&&(d.error_description||d.msg||d.error))||'Correo o contraseña incorrectos'};
+      }).catch(function(){return {err:'Sin conexión con el servidor'};});
+  },
+  refresh:function(){
+    if(!this.session||!this.session.refresh_token)return Promise.resolve(false);
+    return fetch(this.base()+'/auth/v1/token?grant_type=refresh_token',{method:'POST',headers:{'apikey':SB.key,'Content-Type':'application/json'},body:JSON.stringify({refresh_token:this.session.refresh_token})})
+      .then(function(r){return r.json();}).then(function(d){if(d&&d.access_token){if(!d.expires_at)d.expires_at=Math.floor(Date.now()/1000)+(d.expires_in||3600);Auth.session=d;Auth.save();return true;}Auth.clear();return false;}).catch(function(){return false;});
+  },
+  logout:function(){var t=this.token();this.clear();if(t){try{fetch(this.base()+'/auth/v1/logout',{method:'POST',headers:{'apikey':SB.key,'Authorization':'Bearer '+t}});}catch(e){}}location.reload();}
+};
+
 /* ============ CAPA DE DATOS + PERSISTENCIA ============ */
 var KEY='caleva_v8_data';
 var Store={
@@ -299,7 +345,7 @@ var Store={
   seed:function(){return JSON.parse(document.getElementById('seed').textContent);},
   cloud:function(){return !!(SB.url&&SB.key);},
   rest:function(){var u=(SB.url||'').replace(/\/+$/,'').replace(/\/rest\/v1$/,'');return u+'/rest/v1/';},
-  headers:function(){return {'apikey':SB.key,'Authorization':'Bearer '+SB.key,'Content-Type':'application/json'};},
+  headers:function(){var t=(typeof Auth!=='undefined'&&Auth.token())||SB.key;return {'apikey':SB.key,'Authorization':'Bearer '+t,'Content-Type':'application/json'};},
   saveLocal:function(){try{localStorage.setItem(KEY,JSON.stringify(this.data));}catch(e){}},
   load:function(){
     var self=this;
@@ -309,8 +355,9 @@ var Store={
     if(!self.cloud())return Promise.resolve();
     self.setCloud('sync');
     return fetch(self.rest()+SB.table+'?id=eq.1&select=data,version',{headers:self.headers()})
-      .then(function(r){return r.ok?r.json():[];})
+      .then(function(r){if(r.status===401||r.status===403){self._authFail=true;return [];}return r.ok?r.json():[];})
       .then(function(rows){
+        if(self._authFail){self._authFail=false;self.setCloud('err');return Auth.refresh().then(function(ok){if(ok)return self.load();UI.showLogin();});}
         if(rows&&rows.length&&rows[0].data&&rows[0].data.facturas){self.data=rows[0].data;self.version=rows[0].version||0;self.saveLocal();self.setCloud('ok');}
         else{return self.push();}   /* nube vacía: sube los datos actuales */
       })
@@ -324,7 +371,7 @@ var Store={
     var body=JSON.stringify({id:1,data:self.data,version:self.version,updated_at:new Date().toISOString()});
     var hdr=self.headers();hdr['Prefer']='resolution=merge-duplicates,return=minimal';
     return fetch(self.rest()+SB.table+'?on_conflict=id',{method:'POST',headers:hdr,body:body})
-      .then(function(r){self.setCloud(r.ok?'ok':'err');})
+      .then(function(r){if(r.status===401||r.status===403){self.setCloud('err');Auth.refresh().then(function(ok){if(!ok)UI.showLogin();});return;}self.setCloud(r.ok?'ok':'err');})
       .catch(function(){self.setCloud('off');});
   },
   reload:function(){
@@ -384,10 +431,30 @@ var UI={
     var self=this;
     this._pr=this.loadPrefs();
     BCV.cargar();
+    if(!Store.cloud()){this.startApp();return;}          // modo local (sin nube) no requiere login
+    Auth.load();
+    if(!Auth.expired()){this.startApp();return;}
+    Auth.refresh().then(function(ok){if(ok)self.startApp();else self.showLogin();});
+  },
+  startApp:function(){
+    var self=this;
     Store.setCloud(Store.cloud()?'sync':'local');
     document.getElementById('cloudWrap').style.display=Store.cloud()?'inline-flex':'none';
-    Store.load().then(function(){self.boot2();if(Store.cloud())setInterval(function(){Store.updateSyncLabel();},30000);});
+    this.renderUser();
+    Store.load().then(function(){self.boot2();if(Store.cloud()){setInterval(function(){Store.updateSyncLabel();},30000);setInterval(function(){Auth.refresh();},2700000);}});
   },
+  showLogin:function(){var b=document.getElementById('loginBg');if(b){b.classList.add('on');var e=document.getElementById('lgEmail');if(e)e.focus();}},
+  doLogin:function(){
+    var em=(document.getElementById('lgEmail').value||'').trim(),pw=document.getElementById('lgPass').value||'';
+    var msg=document.getElementById('lgMsg'),btn=document.getElementById('lgBtn');
+    if(!em||!pw){msg.textContent='Ingrese correo y contraseña';return;}
+    msg.textContent='Verificando…';btn.disabled=true;
+    Auth.login(em,pw).then(function(r){btn.disabled=false;
+      if(r.ok){document.getElementById('loginBg').classList.remove('on');msg.textContent='';document.getElementById('lgPass').value='';UI.startApp();}
+      else{msg.textContent=r.err||'Credenciales inválidas';}});
+  },
+  logout:function(){if(confirm('¿Cerrar sesión?'))Auth.logout();},
+  renderUser:function(){var w=document.getElementById('userWrap');if(!w)return;var u=Auth.email&&Auth.email();if(u&&Store.cloud()){w.style.display='inline-flex';document.getElementById('userEmail').textContent=u;}else{w.style.display='none';}},
   boot2:function(){
     var pr=this._pr||{};
     var years=[...new Set(Store.data.facturas.map(f=>f.anio))].sort((a,b)=>b-a);
