@@ -234,7 +234,7 @@ body:not(.is-admin) #hdrBadges{display:none!important}
     <select id="selAnio" onchange="UI.render();UI.savePrefs()"></select>
     <input id="txtBuscar" placeholder="Buscar factura, pedido, HES, descripci&oacute;n..." style="min-width:260px" oninput="UI.render()">
     <span id="cloudWrap" style="display:none;align-items:center;gap:6px;font-size:11px;color:var(--mut)"><span id="cloudDot" style="width:10px;height:10px;border-radius:50%;background:#95a5a6"></span><span id="cloudTxt">solo local</span><button class="btn gr" style="padding:5px 10px" onclick="Store.reload()">&#8635; Recargar nube</button></span>
-    <span id="userWrap" style="display:none;align-items:center;gap:6px;font-size:11px;color:var(--mut)">&#128100; <b id="userEmail"></b><span id="userRol" style="background:var(--navy);color:#fff;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700"></span><button class="btn r" style="padding:5px 10px" onclick="UI.logout()">Salir</button></span>
+    <span id="userWrap" style="display:none;align-items:center;gap:6px;font-size:11px;color:var(--mut)">&#128100; <b id="userEmail"></b><span id="userRol" style="background:var(--navy);color:#fff;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700"></span><button class="btn" style="padding:5px 10px" onclick="UI.irPortal()">◀ Menú</button><button class="btn r" style="padding:5px 10px" onclick="UI.logout()">Salir</button></span>
     <span style="flex:1"></span>
     <button class="btn o" onclick="window.print()">&#128424; PDF de esta pesta&ntilde;a</button>
     <button class="btn g" onclick="Export.toExcel()">&#128203; Exportar a Excel</button>
@@ -362,7 +362,7 @@ var Auth={
     return fetch(this.base()+'/auth/v1/token?grant_type=refresh_token',{method:'POST',headers:{'apikey':SB.key,'Content-Type':'application/json'},body:JSON.stringify({refresh_token:this.session.refresh_token})})
       .then(function(r){return r.json();}).then(function(d){if(d&&d.access_token){if(!d.expires_at)d.expires_at=Math.floor(Date.now()/1000)+(d.expires_in||3600);Auth.session=d;Auth.save();return true;}Auth.clear();return false;}).catch(function(){return false;});
   },
-  logout:function(){var t=this.token();this.clear();if(t){try{fetch(this.base()+'/auth/v1/logout',{method:'POST',headers:{'apikey':SB.key,'Authorization':'Bearer '+t}});}catch(e){}}location.reload();}
+  logout:function(){var t=this.token();this.clear();if(t){try{fetch(this.base()+'/auth/v1/logout',{method:'POST',headers:{'apikey':SB.key,'Authorization':'Bearer '+t}});}catch(e){}}location.href='../';}
 };
 
 /* ============ CAPA DE DATOS + PERSISTENCIA ============
@@ -535,6 +535,7 @@ var UI={
       else{msg.textContent=r.err||'Credenciales inválidas';}});
   },
   logout:function(){if(confirm('¿Cerrar sesión?'))Auth.logout();},
+  irPortal:function(){location.href='../';},
   renderUser:function(){var w=document.getElementById('userWrap');if(!w)return;var u=Auth.email&&Auth.email();
     if(u&&Store.cloud()){w.style.display='inline-flex';document.getElementById('userEmail').textContent=u;
       var rb=document.getElementById('userRol');if(rb)rb.textContent=Auth.esAdmin()?'Administrador':'Usuario';}

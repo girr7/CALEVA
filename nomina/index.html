@@ -1014,7 +1014,7 @@ body.nom-readonly .btn.p,body.nom-readonly .btn.ok,body.nom-readonly .btn.dg,bod
         <div class="tasa"><img class="bcv-logo" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxODAgMTgwIj4KPGcgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMTczZjc4IiBzdHJva2Utd2lkdGg9IjUiPgo8Y2lyY2xlIGN4PSI5MCIgY3k9IjkwIiByPSI3MyIvPjxjaXJjbGUgY3g9IjkwIiBjeT0iOTAiIHI9IjU4Ii8+CjxwYXRoIGQ9Ik05MCAxN3YyNE05MCAxMzl2MjRNMTcgOTBoMjRNMTM5IDkwaDI0TTM4IDM4bDE3IDE3TTEyNSAxMjVsMTcgMTdNMTQyIDM4bC0xNyAxN001NSAxMjVsLTE3IDE3Ii8+CjxwYXRoIGQ9Ik02MiAyN2wxMCAyMk0xMDggMTMxbDEwIDIyTTI3IDYybDIyIDEwTTEzMSAxMDhsMjIgMTBNMTE4IDI3bC0xMCAyMk03MiAxMzFsLTEwIDIyTTE1MyA2MmwtMjIgMTBNNDkgMTA4bC0yMiAxMCIvPgo8L2c+CjxjaXJjbGUgY3g9IjkwIiBjeT0iOTAiIHI9IjQ2IiBmaWxsPSIjMTczZjc4Ii8+CjxyZWN0IHg9IjQ4IiB5PSI2OCIgd2lkdGg9Ijg0IiBoZWlnaHQ9IjQ0IiByeD0iMyIgZmlsbD0iI2ZmZiIvPgo8dGV4dCB4PSI5MCIgeT0iMTAwIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmb250LWZhbWlseT0iR2VvcmdpYSxzZXJpZiIgZm9udC1zaXplPSIzOCIgZm9udC13ZWlnaHQ9IjcwMCIgZmlsbD0iIzE3M2Y3OCI+QkNWPC90ZXh0Pgo8L3N2Zz4=" alt="Banco Central de Venezuela"><span class="dot" id="tdot"></span><div class="tasa-label"><small>Tasa BCV</small><span><b id="ttasa">—</b> Bs/$</span></div>
           <button class="btn sm" onclick="fetchTasa(1)" title="Actualizar tasa" aria-label="Actualizar tasa">↻</button></div>
         <span class="cloud-dot" id="cloudDot" title="Estado de la nube"></span>
-        <span class="user-chip" id="userChip">👤 <b class="who" id="userEmail"></b><span class="rol" id="userRol"></span><button class="btn sm" onclick="Auth.logout()">Salir</button></span>
+        <span class="user-chip" id="userChip">👤 <b class="who" id="userEmail"></b><span class="rol" id="userRol"></span><button class="btn sm" onclick="irPortal()">◀ Menu</button><button class="btn sm" onclick="Auth.logout()">Salir</button></span>
       </div>
     </header>
     <div class="content" id="view"></div>
@@ -1117,7 +1117,7 @@ var Auth={
       .then(function(rows){var row=(rows&&rows[0])||{};self.role=row.rol||'sin_acceso';self.permisos=row.permisos||{ver:{},editar:{}};self.email=row.email||self.correo();})
       .catch(function(){self.role='sin_acceso';self.permisos={ver:{},editar:{}};});
   },
-  logout:function(){var t=this.token();this.clear();if(t){try{fetch(this.base()+'/auth/v1/logout',{method:'POST',headers:{'apikey':SB.key,'Authorization':'Bearer '+t}});}catch(e){}}location.reload();}
+  logout:function(){var t=this.token();this.clear();if(t){try{fetch(this.base()+'/auth/v1/logout',{method:'POST',headers:{'apikey':SB.key,'Authorization':'Bearer '+t}});}catch(e){}}location.href='../';}
 };
 var Cloud={
   rest:function(){var u=(SB.url||'').replace(/\/+$/,'').replace(/\/rest\/v1$/,'');return u+'/rest/v1/';},
@@ -3520,6 +3520,7 @@ function aplicarRol(){
 function showLogin(){var b=document.getElementById('loginBg');if(b){b.classList.add('on');var e=document.getElementById('lgEmail');if(e)e.focus();}}
 function hideLogin(){var b=document.getElementById('loginBg');if(b)b.classList.remove('on');}
 function showNoAccess(){var n=document.getElementById('noAccess');if(n)n.classList.add('on');}
+function irPortal(){location.href='../';}
 function doLogin(){
   var em=document.getElementById('lgEmail').value.trim(), pw=document.getElementById('lgPass').value;
   var msg=document.getElementById('lgMsg'), btn=document.getElementById('lgBtn');
