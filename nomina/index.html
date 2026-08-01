@@ -987,7 +987,111 @@ body.nom-readonly .btn.p,body.nom-readonly .btn.ok,body.nom-readonly .btn.dg,bod
 #noAccess h2{font-size:20px;margin-bottom:10px}#noAccess p{font-size:13px;color:#d6e4f5;line-height:1.6;margin-bottom:18px}
 
 </style>
+<style id="ds-fintech">
+/* ===== Caleva Design System · Fintech Vibrante (override final) ===== */
+:root{
+  --navy:#141f47; --navy2:#1b2a63;
+  --blue:#3b5bfd; --cyan:#22d3ee; --purple:#7c3aed;
+  --acc:#3b5bfd; --acc2:#2f49d4; --accbg:#eef1ff;
+  --ok:#0a8f5b; --okbg:#e6fbf3;
+  --warn:#ea580c; --warnbg:#fff1e6; --gold:#ea580c;
+  --bad:#e11d48; --badbg:#ffe9ee;
+  --bg:#f3f5fc; --bg2:#ffffff; --card:#ffffff; --card2:#fafbff; --hover:#f2f5ff;
+  --line:#e4e9f7; --line2:#dde3f5;
+  --ink:#1b2a63; --muted:#5b6b8c; --txt:#1b2a63; --txt2:#5b6b8c; --txt3:#8a99b8;
+  --brand-grad:linear-gradient(120deg,#3b5bfd,#22d3ee);
+  --brand-soft:linear-gradient(120deg,rgba(59,91,253,.10),rgba(34,211,238,.08));
+  --grad-head:linear-gradient(120deg,#1b2a63,#3b5bfd 65%,#22d3ee);
+  --sh:0 6px 18px rgba(27,42,99,.08);
+  --sh2:0 24px 60px rgba(20,31,71,.28);
+  --sh-accent:0 6px 16px rgba(59,91,253,.32);
+  --r:14px; --r-lg:20px;
+}
+body{background:var(--bg)!important}
 
+/* ---- Sidebar oscuro ---- */
+.side{background:#141f47!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;border-right:1px solid rgba(255,255,255,.06)!important}
+.brand img{background:#fff}
+.brand-copy strong{color:#fff}
+.brand-copy span,.navsec{color:#6f83ad}
+.nav a{color:#9fb0d6;border-color:transparent}
+.nav a:hover{background:rgba(255,255,255,.07);color:#fff}
+.nav a .ic{background:rgba(255,255,255,.07);color:#c3d2ee}
+.nav a .ic svg{width:18px;height:18px;display:block}
+.nav a:hover .ic{background:rgba(255,255,255,.14)!important;color:#fff!important}
+.nav a.on{background:var(--brand-grad)!important;color:#fff!important;border-color:transparent!important;box-shadow:0 6px 16px rgba(59,91,253,.35)!important}
+.nav a.on::before{display:none!important}
+.nav a.on .ic{background:rgba(255,255,255,.22)!important;color:#fff!important;box-shadow:none!important}
+.nav a .nav-badge{background:rgba(255,255,255,.16);color:#dbe7ff}
+.workspace-card{background:rgba(255,255,255,.06)!important;border-color:rgba(255,255,255,.10)!important}
+.workspace-meta b{color:#fff}
+.workspace-meta span{color:#9fb0d6}
+
+/* ---- Top bar en gradiente ---- */
+.top{background:var(--grad-head)!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;border-bottom:none!important}
+.top h2,.page-heading h2,#ttl{color:#fff!important}
+.page-heading p,#tsub{color:#c7d6ff!important}
+.dash-hero{background:var(--grad-head)!important}
+.dash-hero .btn{background:rgba(255,255,255,.14)!important;border:1px solid rgba(255,255,255,.4)!important;color:#fff!important}
+.dash-hero .btn:hover{background:rgba(255,255,255,.26)!important;color:#fff!important;transform:translateY(-1px)}
+.dash-hero .btn.primary-light{background:#fff!important;color:#1b2a63!important;border-color:#fff!important}
+.dash-hero .btn.primary-light:hover{filter:brightness(.95);background:#fff!important;color:#1b2a63!important}
+
+/* ---- Botones ---- */
+.btn{border-radius:11px}
+.btn.p{background:var(--brand-grad)!important;border-color:transparent!important;color:#fff!important;box-shadow:var(--sh-accent)!important;border-radius:11px}
+.btn.p:hover{filter:brightness(1.06)}
+.btn:not(.p):not(.ok):not(.dg):not(.wn):hover{border-color:#c3d0ff}
+
+/* ---- Cards / KPI ---- */
+.card{background:#fff!important;border-radius:14px}
+.kpi{background:#fff!important;border-radius:14px}
+.kpi::after{background:radial-gradient(circle,rgba(59,91,253,.13),transparent 68%)!important}
+
+/* ============ TABLAS · cabeceras Fintech ============ */
+thead th:not(.grp){background:#eef2fb!important;color:#41527a!important;border-color:var(--line)!important;box-shadow:inset 0 -2px 0 var(--acc)!important;font-weight:700;letter-spacing:.3px}
+thead th.gl:not(.grp),td.gl{border-left:1px solid #dde5f4!important}
+thead th.grp{font-weight:800!important;letter-spacing:.5px;border-bottom:3px solid currentColor!important;border-left:1px solid #e6ebf6!important;border-radius:10px 10px 0 0}
+th.grp.gA{background:#ffe9ee!important;color:#e11d48!important}
+th.grp.gB{background:#e6fbf3!important;color:#0a8f5b!important}
+th.grp.gC{background:#fff1e6!important;color:#ea580c!important}
+th.grp.gD{background:#eef1ff!important;color:#3b5bfd!important}
+th.stick{background:#e7edf9!important;color:#41527a!important;box-shadow:inset 0 -2px 0 var(--acc),4px 0 10px -8px rgba(15,23,42,.22)!important}
+tbody tr:nth-child(even) td{background:var(--card2)}
+tbody tr:hover td{background:var(--hover)}
+td.tt{background:#eef1ff!important}
+tr:hover td.tt{background:#e2e8ff!important}
+tr.tot td{background:#f2f5ff!important;color:var(--navy2)!important;font-weight:750}
+
+/* ---- Inputs ---- */
+.f input:focus,.f select:focus,.f textarea:focus,.search:focus,td input:focus,td select:focus{border-color:var(--acc)!important;box-shadow:0 0 0 3px var(--accbg)!important}
+
+/* ---- Pills de régimen ---- */
+.pill.lottt{background:#eef1ff;color:#3b5bfd;border-color:#d6def9}
+.pill.free{background:#fff1e6;color:#c2680c;border-color:#fdd6b0}
+.pill.contr{background:#f1ecff;color:#7c3aed;border-color:#e6dcff}
+
+/* ---- Modal con cabecera en gradiente ---- */
+.modal{border-radius:20px}
+.modal .mh{background:var(--brand-grad)!important;border-bottom:none!important}
+.modal .mh h3{color:#fff!important}
+.modal .mh .ic,.modal .mh i,.modal .mh svg{color:#fff!important;fill:#fff!important}
+
+/* ---- Iconos nav duotono + tile con degradado ---- */
+.nav a .ic{background:color-mix(in srgb,var(--hue,#8fb8ff) 16%,transparent)!important;color:var(--hue,#bcd2ff)!important}
+.nav a:hover:not(.on) .ic{background:color-mix(in srgb,var(--hue,#8fb8ff) 28%,transparent)!important}
+.nav a.on .ic{background:rgba(255,255,255,.22)!important;color:#fff!important}
+/* ---- Chips de icono en KPIs ---- */
+.metric{background:#fff!important;border-radius:16px!important}
+.metric-icon{width:38px!important;height:38px!important;border-radius:12px!important;background:linear-gradient(135deg,color-mix(in srgb,var(--metric-accent) 22%,#fff),color-mix(in srgb,var(--metric-accent) 8%,#fff))!important;box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--metric-accent) 24%,transparent)!important;color:var(--metric-accent)!important}
+.metric-icon svg{width:20px;height:20px;display:block}
+.metric-value{color:var(--navy2)!important}
+/* ---- Chips secundarios coherentes ---- */
+.section-head-icon,.quick-action .qa-icon{background:linear-gradient(135deg,rgba(59,91,253,.16),rgba(34,211,238,.10))!important;color:var(--acc)!important}
+
+/* ---- Logo Caleva en el login ---- */
+.login-card .lg-logo{display:block;margin:0 auto 16px;height:48px;width:auto;object-fit:contain}
+</style>
 </head>
 <body>
 <a class="skip-link" href="#main-content">Saltar al contenido principal</a>
@@ -1022,6 +1126,7 @@ body.nom-readonly .btn.p,body.nom-readonly .btn.ok,body.nom-readonly .btn.dg,bod
 </div>
 <div id="loginBg">
   <div class="login-card">
+    <img id="lgLogo" class="lg-logo" alt="Corporación CALEVA">
     <h2>Nómina CALEVA</h2>
     <div class="lg-sub">Acceso restringido a usuarios autorizados</div>
     <div class="fld"><label>Correo</label><input id="lgEmail" type="email" autocomplete="username" placeholder="usuario@corpcaleva.com"></div>
@@ -1533,12 +1638,12 @@ async function traerTasaA(inputId){
 }
 
 /* ═══════════ NAVEGACIÓN ═══════════ */
-const MENU=[{s:'Operación'},{k:'dash',i:'🏠',t:'Panel'},{k:'quincena',i:'📅',t:'Quincena'},
-  {k:'nominas',i:'💵',t:'Nóminas'},{k:'txt',i:'🏦',t:'TXT BNC'},
-  {s:'Maestros'},{k:'personal',i:'👥',t:'Personal'},{k:'prestamos',i:'💳',t:'Préstamos'},
-  {k:'historial',i:'📊',t:'Historial'},
-  {k:'periodos',i:'🗓️',t:'Períodos'},
-  {s:'Administración'},{k:'config',i:'⚙️',t:'Configuración'},{k:'usuarios',i:'👤',t:'Usuarios'}];
+const MENU=[{s:'Operación'},{k:'dash',c:'#5b7bff',i:'<svg viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="2.2" fill="currentColor" opacity=".32"/><rect x="13" y="3" width="8" height="5" rx="2.2" fill="currentColor"/><rect x="13" y="10" width="8" height="11" rx="2.2" fill="currentColor" opacity=".32"/><rect x="3" y="13" width="8" height="8" rx="2.2" fill="currentColor"/></svg>',t:'Panel'},{k:'quincena',c:'#34d9ee',i:'<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3.2" fill="currentColor" opacity=".3"/><rect x="3" y="5" width="18" height="4.6" rx="3.2" fill="currentColor"/><rect x="6.7" y="2.4" width="2" height="4.2" rx="1" fill="currentColor"/><rect x="15.3" y="2.4" width="2" height="4.2" rx="1" fill="currentColor"/></svg>',t:'Quincena'},
+  {k:'nominas',c:'#2ecfa0',i:'<svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="3.2" fill="currentColor" opacity=".3"/><circle cx="12" cy="12" r="3.1" fill="currentColor"/><circle cx="5.6" cy="12" r="1" fill="currentColor"/><circle cx="18.4" cy="12" r="1" fill="currentColor"/></svg>',t:'Nóminas'},{k:'txt',c:'#a780f5',i:'<svg viewBox="0 0 24 24"><path d="M12 2.6 21.5 8v2.2H2.5V8z" fill="currentColor"/><rect x="4.5" y="11.3" width="15" height="7.4" rx="1.2" fill="currentColor" opacity=".3"/><rect x="2.6" y="19.4" width="18.8" height="2.3" rx="1.15" fill="currentColor"/></svg>',t:'TXT BNC'},
+  {s:'Maestros'},{k:'personal',c:'#38bdf8',i:'<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.6" fill="currentColor"/><path d="M2.4 20.4c0-3.7 3-6.2 6.6-6.2s6.6 2.5 6.6 6.2z" fill="currentColor" opacity=".3"/><circle cx="17.2" cy="8.6" r="2.7" fill="currentColor" opacity=".6"/><path d="M15.4 14.6c2.9.3 5 2.4 5 5.6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" opacity=".6"/></svg>',t:'Personal'},{k:'prestamos',c:'#fbbf24',i:'<svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="3.2" fill="currentColor" opacity=".3"/><rect x="2" y="8.4" width="20" height="3.1" fill="currentColor"/><rect x="5" y="14.6" width="6.5" height="2.1" rx="1.05" fill="currentColor"/></svg>',t:'Préstamos'},
+  {k:'historial',c:'#f472b6',i:'<svg viewBox="0 0 24 24"><rect x="3" y="12" width="4.2" height="8.4" rx="1.6" fill="currentColor" opacity=".42"/><rect x="9.9" y="4.6" width="4.2" height="15.8" rx="1.6" fill="currentColor"/><rect x="16.8" y="9" width="4.2" height="11.4" rx="1.6" fill="currentColor" opacity=".42"/></svg>',t:'Historial'},
+  {k:'periodos',c:'#2dd4bf',i:'<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3.2" fill="currentColor" opacity=".3"/><rect x="3" y="5" width="18" height="4.6" rx="3.2" fill="currentColor"/><rect x="6.6" y="12.4" width="4.2" height="4.4" rx="1" fill="currentColor"/><path d="M13.4 13.4h4.6M13.4 16.4h3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>',t:'Períodos'},
+  {s:'Administración'},{k:'config',c:'#b6c2d6',i:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" fill="currentColor" opacity=".32"/><circle cx="12" cy="12" r="1.9" fill="currentColor"/><g fill="currentColor"><rect x="11" y="2.3" width="2" height="3.6" rx="1"/><rect x="11" y="18.1" width="2" height="3.6" rx="1"/><rect x="2.3" y="11" width="3.6" height="2" rx="1"/><rect x="18.1" y="11" width="3.6" height="2" rx="1"/><rect x="4.6" y="5.2" width="2" height="3.4" rx="1" transform="rotate(-45 5.6 6.9)"/><rect x="17.4" y="15.4" width="2" height="3.4" rx="1" transform="rotate(-45 18.4 17.1)"/></g></svg>',t:'Configuración'},{k:'usuarios',c:'#8b8ef6',i:'<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4" fill="currentColor"/><path d="M4 20.4c0-4 3.6-6.6 8-6.6s8 2.6 8 6.6z" fill="currentColor" opacity=".3"/></svg>',t:'Usuarios'}];
 const SUBTITULOS={dash:'Resumen ejecutivo del período seleccionado',quincena:'Captura y control de incidencias de nómina',nominas:'Desglose financiero y operativo del período',txt:'Preparación del archivo bancario de dispersión',personal:'Administración del maestro de trabajadores',prestamos:'Control de créditos, cuotas y saldos',historial:'Trazabilidad individual de pagos e incidencias',periodos:'Gestión del ciclo y estados de nómina',config:'Parámetros generales del workspace',usuarios:'Gestión de acceso por rol'};
 const TITULOS={dash:'Panel de Nómina',quincena:'Quincena · Entrada de Datos',nominas:'Nóminas del Período',
   txt:'Generación TXT · Banco BNC',personal:'Maestro de Personal',prestamos:'Préstamos al Personal',
@@ -1551,7 +1656,7 @@ function nav(){
   const vis=MENU.filter(m=>m.s||Auth.puedeVer(m.k));
   const out=[]; vis.forEach((m,i)=>{ if(m.s){ const nx=vis[i+1]; if(nx&&!nx.s) out.push(m); } else out.push(m); });
   document.getElementById('nav').innerHTML=out.map(m=>m.s?`<div class="navsec">${m.s}</div>`:
-    `<a class="${VIEW===m.k?'on':''}" onclick="go('${m.k}')" title="${m.t}"><span class="ic">${m.i}</span><span class="nav-label">${m.t}</span>${badges[m.k]?`<span class="nav-badge">${badges[m.k]}</span>`:''}</a>`).join('')
+    `<a class="${VIEW===m.k?'on':''}" onclick="go('${m.k}')" title="${m.t}"><span class="ic" style="--hue:${m.c||'#8fb8ff'}">${m.i}</span><span class="nav-label">${m.t}</span>${badges[m.k]?`<span class="nav-badge">${badges[m.k]}</span>`:''}</a>`).join('')
 }
 function toggleSidebar(){
   document.body.classList.toggle('side-collapsed');
@@ -1598,13 +1703,16 @@ function flowBar(){
       <div class="v">${p.fechaPagoReal? fFecha(p.fechaPagoReal) : 'Prevista '+fFecha(p.fechaPagoPrevista)}</div>
       <div class="d">${p.tasaBCVPago? 'Tasa definitiva '+fN(p.tasaBCVPago,4) : 'Recalcula a la tasa del día'}</div></div>
     <div class="st" style="flex:0 0 auto;min-width:auto;display:flex;align-items:center;gap:8px;background:var(--card2)">
+      ${Auth.esAdmin()?`
       ${e==='borrador'?`<button class="btn p" onclick="aprobarNomina()">Aprobar nómina →</button>`:''}
       ${e==='aprobada'?`<button class="btn ok" onclick="registrarPago()">Registrar pago →</button>
         <button class="btn sm" onclick="revertir('borrador')">↩ Borrador</button>`:''}
       ${e==='pagada'?`<button class="btn sm" onclick="revertir('aprobada')">↩ Reabrir</button>`:''}
+      `:`<span style="font-size:11px;color:var(--txt3);display:inline-flex;align-items:center;gap:6px">🔒 Aprobación y pago reservados al administrador</span>`}
     </div></div>`;
 }
 function aprobarNomina(){
+  if(!Auth.esAdmin()){toast('Solo el administrador puede aprobar, pagar o revertir la nómina','err');return;}
   const p=per(), R=calcPeriodo();
   modal('Aprobar Nómina',`
     <div class="note">Al aprobar se <b>bloquean las entradas</b> (faltas, préstamos, extras). La tasa BCV sigue siendo referencial: el monto definitivo se fija al registrar el pago.</div>
@@ -1621,12 +1729,14 @@ function aprobarNomina(){
     `<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn p" onclick="confirmarAprobacion()">Aprobar</button>`);
 }
 function confirmarAprobacion(){
+  if(!Auth.esAdmin()){toast('Solo el administrador puede aprobar, pagar o revertir la nómina','err');return;}
   const p=per();
   p.fechaPagoPrevista=document.getElementById('ap_fecha').value||p.fechaPagoPrevista;
   p.estado='aprobada'; p.aprobadaEn=hoy(); p.tasaBCVAprobacion=p.tasaBCV;
   save(); closeModal(); render(); toast('Nómina aprobada — lista para pagar');
 }
 function registrarPago(){
+  if(!Auth.esAdmin()){toast('Solo el administrador puede aprobar, pagar o revertir la nómina','err');return;}
   const p=per(), R=calcPeriodo();
   modal('Registrar Pago',`
     <div class="note">Indica la <b>fecha real de pago</b> y la <b>tasa BCV de ese día</b>. Todo se recalcula y queda congelado.</div>
@@ -1663,6 +1773,7 @@ function previewPago(){
     </tbody></table></div>`;
 }
 function confirmarPago(){
+  if(!Auth.esAdmin()){toast('Solo el administrador puede aprobar, pagar o revertir la nómina','err');return;}
   const p=per(), f=document.getElementById('pg_fecha').value, t=+document.getElementById('pg_tasa').value;
   if(!f){toast('Indica la fecha de pago','err');return}
   if(!t||t<=0){toast('Indica una tasa BCV válida','err');return}
@@ -1671,6 +1782,7 @@ function confirmarPago(){
   save(); closeModal(); render(); toast('Pago registrado — período cerrado a tasa '+fN(t,4));
 }
 function revertir(a){
+  if(!Auth.esAdmin()){toast('Solo el administrador puede aprobar, pagar o revertir la nómina','err');return;}
   const p=per();
   const msg = a==='borrador' ? '¿Devolver a borrador? Las entradas volverán a ser editables.'
                              : '¿Reabrir el período pagado? Se libera la tasa congelada y podrás registrar el pago de nuevo.';
@@ -1695,14 +1807,14 @@ function vDash(){
   return `<section class="dash-hero">
     <div class="dash-hero-inner"><div><div class="dash-eyebrow">Centro de control · ${esc(p.etiqueta)}</div>
       <h1>${estadoLabel}</h1><p>Supervisa el costo consolidado, valida incidencias y completa las acciones críticas antes de la dispersión bancaria.</p></div>
-      <div class="dash-hero-actions"><button class="btn" onclick="go('nominas')">Ver detalle</button>${p.estado==='borrador'?`<button class="btn primary-light" onclick="aprobarNomina()">Aprobar nómina →</button>`:p.estado==='aprobada'?`<button class="btn primary-light" onclick="registrarPago()">Registrar pago →</button>`:`<button class="btn primary-light" onclick="go('txt')">Consultar archivo BNC →</button>`}</div>
+      <div class="dash-hero-actions"><button class="btn" onclick="go('nominas')">Ver detalle</button>${p.estado==='pagada'?`<button class="btn primary-light" onclick="go('txt')">Consultar archivo BNC →</button>`:(Auth.esAdmin()?(p.estado==='borrador'?`<button class="btn primary-light" onclick="aprobarNomina()">Aprobar nómina →</button>`:`<button class="btn primary-light" onclick="registrarPago()">Registrar pago →</button>`):'')}</div>
     </div></section>
   ${flowBar()}
   <div class="metric-grid">
-    <article class="metric" style="--metric-accent:#3157d5"><div class="metric-top"><span class="metric-icon">$</span><span class="metric-trend">Período</span></div><div class="metric-label">Costo total</div><div class="metric-value">${fUsd(R.granTotalUSD)}</div><div class="metric-sub">${fBs(R.granTotalBs)} Bs. · tasa ${fN(R.tasa,2)}</div></article>
-    <article class="metric" style="--metric-accent:#7f56d9"><div class="metric-top"><span class="metric-icon">◎</span><span class="metric-trend">${L+F} activos</span></div><div class="metric-label">Fuerza laboral</div><div class="metric-value">${ats.length}</div><div class="metric-sub">${L} LOTTT · ${F} Freelance</div></article>
-    <article class="metric" style="--metric-accent:#12b76a"><div class="metric-top"><span class="metric-icon">✓</span><span class="metric-trend">${basicPct}% del total</span></div><div class="metric-label">Nómina básica</div><div class="metric-value">${fUsd(R.tot.nb_totalBs/R.tasa)}</div><div class="metric-sub">${fBs(R.tot.nb_totalBs)} Bs.</div></article>
-    <article class="metric" style="--metric-accent:#f79009"><div class="metric-top"><span class="metric-icon">!</span><span class="metric-trend" style="background:${R.tot.faltas||susp?'#fff4ed':'#ecfdf3'};color:${R.tot.faltas||susp?'#b54708':'#027a48'}">${R.tot.faltas||susp?'Revisar':'Sin alertas'}</span></div><div class="metric-label">Incidencias</div><div class="metric-value">${R.tot.faltas}<span style="font-size:13px;color:var(--txt3)"> días</span></div><div class="metric-sub">${susp} transportes suspendidos</div></article>
+    <article class="metric" style="--metric-accent:#3b5bfd"><div class="metric-top"><span class="metric-icon"><svg viewBox="0 0 24 24"><rect x="2.2" y="6" width="19.6" height="12" rx="3.2" fill="currentColor" opacity=".28"/><circle cx="12" cy="12" r="3" fill="currentColor"/><circle cx="5.7" cy="12" r=".95" fill="currentColor"/><circle cx="18.3" cy="12" r=".95" fill="currentColor"/></svg></span><span class="metric-trend">Período</span></div><div class="metric-label">Costo total</div><div class="metric-value">${fUsd(R.granTotalUSD)}</div><div class="metric-sub">${fBs(R.granTotalBs)} Bs. · tasa ${fN(R.tasa,2)}</div></article>
+    <article class="metric" style="--metric-accent:#7c3aed"><div class="metric-top"><span class="metric-icon"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5" fill="currentColor"/><path d="M2.6 20c0-3.6 3-6 6.4-6s6.4 2.4 6.4 6z" fill="currentColor" opacity=".28"/><circle cx="17" cy="8.6" r="2.6" fill="currentColor" opacity=".55"/></svg></span><span class="metric-trend">${L+F} activos</span></div><div class="metric-label">Fuerza laboral</div><div class="metric-value">${ats.length}</div><div class="metric-sub">${L} LOTTT · ${F} Freelance</div></article>
+    <article class="metric" style="--metric-accent:#0a8f5b"><div class="metric-top"><span class="metric-icon"><svg viewBox="0 0 24 24"><path d="M6.5 3h11a1 1 0 0 1 1 1v17l-2.7-1.8-2 1.8-2-1.8-2 1.8-2-1.8L4.5 21V4a1 1 0 0 1 1-1z" fill="currentColor" opacity=".28"/><path d="M8.5 9h7M8.5 12.4h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span><span class="metric-trend">${basicPct}% del total</span></div><div class="metric-label">Nómina básica</div><div class="metric-value">${fUsd(R.tot.nb_totalBs/R.tasa)}</div><div class="metric-sub">${fBs(R.tot.nb_totalBs)} Bs.</div></article>
+    <article class="metric" style="--metric-accent:#ea580c"><div class="metric-top"><span class="metric-icon"><svg viewBox="0 0 24 24"><path d="M12 3.4 21.6 20a1 1 0 0 1-.9 1.5H3.3A1 1 0 0 1 2.4 20z" fill="currentColor" opacity=".28"/><rect x="11" y="9.4" width="2" height="5.2" rx="1" fill="currentColor"/><circle cx="12" cy="17.2" r="1.2" fill="currentColor"/></svg></span><span class="metric-trend" style="background:${R.tot.faltas||susp?'#fff4ed':'#ecfdf3'};color:${R.tot.faltas||susp?'#b54708':'#027a48'}">${R.tot.faltas||susp?'Revisar':'Sin alertas'}</span></div><div class="metric-label">Incidencias</div><div class="metric-value">${R.tot.faltas}<span style="font-size:13px;color:var(--txt3)"> días</span></div><div class="metric-sub">${susp} transportes suspendidos</div></article>
   </div>
   <div class="dashboard-grid">
     <div class="dashboard-stack">
@@ -3554,6 +3666,7 @@ function boot(){
   if(!Auth.session || Auth.expired()){ Auth.refresh().then(function(ok){ ok?arrancarNube():showLogin(); }); }
   else { arrancarNube(); }
 }
+(function(){var b=document.querySelector('.brand img'),l=document.getElementById('lgLogo');if(b&&l)l.src=b.src;})();
 boot();
 
 
