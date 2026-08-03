@@ -616,6 +616,7 @@ var UI={
     }
   },
   boot2:function(){
+    if(typeof Auth!=='undefined'&&Auth.esAdmin&&Auth.esAdmin()){Store.data.meta=Store.data.meta||{};if(!Store.data.meta._baseFix){var _n=Proc.normalizarBase();Store.data.meta._baseFix=true;Store.save();toast('Montos de cobranza recalculados a monto base ('+_n+' facturas)');}}
     var pr=this._pr||{};
     var years=[...new Set(Store.data.facturas.map(f=>f.anio))].sort((a,b)=>b-a);
     var sel=document.getElementById('selAnio');
@@ -647,20 +648,36 @@ var UI={
   abrirPago:function(fac){
     var f=Store.data.facturas.find(x=>String(x.factura)===String(fac));if(!f)return;
     document.getElementById('modalTit').textContent='Registrar pago · Factura '+fac;
+    var p=pedidoPorNum(f.pedido);
+    var pct=p?(+p.amortPct||0):0;
+    var saldoAnt=p?saldoAnticipo(p):0;
+    var sugAmort=Math.max(0,Math.min(Math.round((+f.base||0)*pct/100*100)/100,saldoAnt,f.porCobrar));
+    var sugEfe=Math.max(0,Math.round((f.porCobrar-sugAmort)*100)/100);
+    document.getElementById('modalTit').textContent='Registrar cobro · Factura '+fac;
     document.getElementById('modalBody').innerHTML=
-      '<div class="info-pedido" style="margin-bottom:14px"><span>Pedido <b>'+f.pedido+'</b></span><span>Base <b>'+money(f.base)+'</b></span><span>Saldo <b style="color:var(--red)">'+money(f.porCobrar)+'</b></span></div>'+
+      '<div class="info-pedido" style="margin-bottom:14px"><span>Pedido <b>'+pedNum(f.pedido)+'</b></span><span>Base <b>'+money(f.base)+'</b></span><span>Saldo factura <b style="color:var(--red)">'+money(f.porCobrar)+'</b></span>'+((p&&(+p.anticipo||0)>0)?'<span>Saldo anticipo <b>'+money(saldoAnt)+'</b></span>':'')+'</div>'+
       '<div class="frow"><div class="fld"><label>Fecha de pago</label><input id="pgFecha" type="date" value="'+new Date().toISOString().slice(0,10)+'"></div>'+
-      '<div class="fld"><label>Monto recibido</label><input id="pgMonto" type="number" step="0.01" value="'+f.porCobrar+'"></div></div>'+
-      '<div class="frow" style="margin-top:8px"><button class="btn g" onclick="UI.confirmarPago(\''+fac+'\')">Confirmar pago</button><button class="btn r" onclick="UI.cerrarModal()">Cancelar</button></div>'+
-      '<div class="hint">Marca la factura como Pagada cuando el saldo llega a cero (o queda como abono parcial).</div>';
+      '<div class="fld"><label>Efectivo recibido</label><input id="pgMonto" type="number" step="0.01" value="'+sugEfe+'" oninput="UI.recalcPago(\''+sid(fac)+'\')"></div>'+
+      '<div class="fld"><label>Amortización anticipo'+(pct?' ('+pct+'% base)':'')+'</label><input id="pgAmort" type="number" step="0.01" value="'+sugAmort+'" oninput="UI.recalcPago(\''+sid(fac)+'\')"></div></div>'+
+      '<div class="hint" id="pgResumen"></div>'+
+      '<div class="frow" style="margin-top:8px"><button class="btn g" onclick="UI.confirmarPago(\''+fac+'\')">Confirmar cobro</button><button class="btn r" onclick="UI.cerrarModal()">Cancelar</button></div>'+
+      '<div class="hint">Efectivo = dinero recibido. Amortización = porción descontada del anticipo (se calcula sobre la base de la factura; no entra dinero). Juntos saldan la factura.</div>';
     document.getElementById('modalBg').classList.add('on');
+    this.recalcPago(fac);
+  },
+  recalcPago:function(fac){
+    var f=Store.data.facturas.find(x=>String(x.factura)===String(fac));if(!f)return;
+    var el=document.getElementById('pgResumen');if(!el)return;
+    var ef=+document.getElementById('pgMonto').value||0, am=+document.getElementById('pgAmort').value||0;
+    var rest=Math.round((f.porCobrar-ef-am)*100)/100;
+    el.innerHTML='Cubre '+money(ef+am)+' de '+money(f.porCobrar)+' · '+(rest<=0.01?'<b style="color:var(--green)">salda la factura</b>':'quedaría por cobrar <b style="color:var(--red)">'+money(rest)+'</b>');
   },
   confirmarPago:function(fac){
-    var fe=document.getElementById('pgFecha').value,mo=document.getElementById('pgMonto').value;
-    if(!fe){toast('Indique la fecha');return;}
-    var res=Proc.registrarPago(fac,fe,mo);if(res.err){toast(res.err);return;}
+    var fe=document.getElementById('pgFecha').value,mo=document.getElementById('pgMonto').value,am=document.getElementById('pgAmort').value;
+    if((+mo||0)+(+am||0)<=0){toast('Indique efectivo y/o amortización');return;}
+    var res=Proc.registrarPago(fac,fe,mo,am);if(res.err){toast(res.err);return;}
     this.cerrarModal();this.postWrite();
-    toast('Pago registrado · factura '+fac+(res.ok.status==='Pagada'?' (Pagada)':' (abono parcial)'));
+    toast('Cobro registrado · factura '+fac+(res.ok.status==='Pagada'?' (Pagada)':' (parcial)'));
   },
   abrirFechaPago:function(fac){
     var f=Store.data.facturas.find(x=>String(x.factura)===String(fac));if(!f)return;
@@ -680,20 +697,47 @@ var UI={
     var res=Proc.editarFechaPago(fac,fe);if(res.err){toast(res.err);return;}
     this.cerrarModal();this.postWrite();toast('Fecha de pago '+(fe?'actualizada':'eliminada')+' · factura '+fac);
   },
+  abrirAjusteAmort:function(fac){
+    var f=Store.data.facturas.find(x=>String(x.factura)===String(fac));if(!f)return;
+    var p=pedidoPorNum(f.pedido);if(!p){toast('Pedido no encontrado');return;}
+    var base=+f.base||0;
+    var disp=Math.round((saldoAnticipo(p)+(+f.amortizado||0))*100)/100;
+    document.getElementById('modalTit').textContent='Amortización de anticipo · Factura '+fac;
+    document.getElementById('modalBody').innerHTML=
+      '<div class="info-pedido" style="margin-bottom:14px"><span>Base <b>'+money(base)+'</b></span><span>Efectivo actual <b>'+money(f.pagos)+'</b></span><span>Amortizado actual <b>'+money(f.amortizado||0)+'</b></span><span>Anticipo disponible <b>'+money(disp)+'</b></span></div>'+
+      '<div class="frow"><div class="fld"><label>Amortización del anticipo</label><input id="ajAmort" type="number" step="0.01" value="'+(+f.amortizado||0)+'" oninput="UI.recalcAjuste(\''+sid(fac)+'\')"></div></div>'+
+      '<div class="hint" id="ajResumen"></div>'+
+      '<div class="frow" style="margin-top:8px"><button class="btn g" onclick="UI.guardarAjusteAmort(\''+sid(fac)+'\')">Guardar</button><button class="btn r" onclick="UI.cerrarModal()">Cancelar</button></div>'+
+      '<div class="hint">Reparte el monto ya cobrado de esta factura entre efectivo y amortización del anticipo. El efectivo se ajusta solo (base − amortización). No cambia el total ni el estado de pago.</div>';
+    document.getElementById('modalBg').classList.add('on');
+    this.recalcAjuste(fac);
+  },
+  recalcAjuste:function(fac){
+    var f=Store.data.facturas.find(x=>String(x.factura)===String(fac));if(!f)return;var el=document.getElementById('ajResumen');if(!el)return;
+    var base=+f.base||0, am=+document.getElementById('ajAmort').value||0;
+    el.innerHTML='Efectivo resultante: <b>'+money(Math.round((base-am)*100)/100)+'</b> · Amortización: <b style="color:var(--purple)">'+money(am)+'</b>';
+  },
+  guardarAjusteAmort:function(fac){
+    var am=document.getElementById('ajAmort').value||0;
+    var res=Proc.ajustarAmortizacion(fac,am);if(res.err){toast(res.err);return;}
+    this.cerrarModal();this.postWrite();toast('Amortización actualizada · factura '+fac);
+  },
   cerrarModal:function(){document.getElementById('modalBg').classList.remove('on');},
   verFactura:function(fac){
     var f=Store.data.facturas.find(x=>String(x.factura)===String(fac));if(!f)return;
     var pill=f.status==='Pagada'?'<span class="pill ok">Pagada</span>':(esParcial(f)?'<span class="pill pend">Abono parcial</span>':'<span class="pill venc">Pendiente</span>');
     var lin=(f.lineas||[]).map(l=>'<tr><td class="mono">'+(l.hes||'—')+'</td><td>'+(l.estacion||'')+'</td><td class="center">'+(l.val||'')+'</td><td>'+(l.desc||'')+'</td><td class="num">'+money(l.base)+'</td></tr>').join('');
+    var _pAnt=pedidoPorNum(f.pedido);var puedeAjustar=(f.status==='Pagada'&&_pAnt&&(+_pAnt.anticipo||0)>0);
     document.getElementById('modalTit').textContent='Factura '+fac+'  ·  '+f.nHes+' HES';
     document.getElementById('modalBody').innerHTML=
       '<div class="info-pedido" style="margin-bottom:12px"><span>Pedido <b>'+f.pedido+'</b></span><span>Fecha <b>'+fdate(f.fecha)+'</b></span><span>Vence <b>'+fdate(f.fVenc)+'</b></span><span>'+pill+'</span></div>'+
-      '<div class="info-pedido" style="margin-bottom:12px"><span>Base <b>'+money(f.base)+'</b></span><span>IVA <b>'+money(f.iva)+'</b></span><span>Total <b>'+money(f.total)+'</b></span><span>Cobrado <b>'+money(f.pagos)+'</b></span><span>Saldo <b style="color:'+(f.porCobrar>0.01?'var(--red)':'var(--green)')+'">'+money(f.porCobrar)+'</b></span></div>'+
+      '<div class="info-pedido" style="margin-bottom:12px"><span>Base <b>'+money(f.base)+'</b></span><span>IVA <b>'+money(f.iva)+'</b></span><span>Total <b>'+money(f.total)+'</b></span><span>Cobrado <b>'+money(f.pagos)+'</b></span>'+((+f.amortizado||0)>0.01?'<span>Amortizado <b style="color:var(--purple)">'+money(f.amortizado)+'</b></span>':'')+'<span>Saldo <b style="color:'+(f.porCobrar>0.01?'var(--red)':'var(--green)')+'">'+money(f.porCobrar)+'</b></span></div>'+
       '<table class="itemtbl"><thead><tr><th>HES</th><th>Estación</th><th class="center">Val</th><th>Descripción</th><th style="width:110px">Base</th></tr></thead><tbody>'+(lin||'<tr><td colspan="5" class="empty">Sin líneas</td></tr>')+'</tbody></table>'+
       '<div class="frow" style="margin-top:14px">'+
       '<button class="btn o" onclick="UI.cerrarModal();Factura.desdeFactura(\''+sid(fac)+'\')">🧾 Imprimir PDF</button>'+
       (f.porCobrar>0.01?'<button class="btn g req-edit-facturas" onclick="UI.cerrarModal();UI.abrirPago(\''+fac+'\')">Registrar pago</button>':'')+
       '<button class="btn o req-edit-facturas" onclick="UI.cerrarModal();UI.abrirFechaPago(\''+fac+'\')">📅 Editar fecha de pago</button>'+
+      (puedeAjustar?'<button class="btn o req-edit-facturas" onclick="UI.cerrarModal();UI.abrirAjusteAmort(\''+fac+'\')">💠 Ajustar amortización</button>':'')+
       '<button class="btn r req-admin" onclick="UI.eliminarFactura(\''+fac+'\')">Eliminar factura</button>'+
       '<button class="btn gr" onclick="UI.cerrarModal()">Cerrar</button></div>'+
       '<div class="hint">Eliminar la factura devuelve sus valuaciones al estado “Por facturar” y restituye el disponible del pedido.</div>';
@@ -709,7 +753,7 @@ var UI={
     document.getElementById('modalBody').innerHTML=
       '<div class="frow"><div class="fld"><label>N° Pedido</label><input id="npNum" placeholder="5602..."></div><div class="fld"><label>Moneda</label><select id="npMon"><option>USD</option><option>Bs</option></select></div></div>'+
       '<div class="frow"><div class="fld" style="flex:1"><label>Descripción</label><input id="npDesc" class="wide" style="min-width:320px"></div></div>'+
-      '<div class="frow"><div class="fld"><label>Monto</label><input id="npMonto" type="number" step="0.01"></div><div class="fld"><label>Plazo (días)</label><input id="npPlazo" type="number" value="30"></div><div class="fld"><label>Anticipo</label><input id="npAnt" type="number" step="0.01" value="0"></div></div>'+
+      '<div class="frow"><div class="fld"><label>Monto</label><input id="npMonto" type="number" step="0.01"></div><div class="fld"><label>Plazo (días)</label><input id="npPlazo" type="number" value="30"></div><div class="fld"><label>Anticipo</label><input id="npAnt" type="number" step="0.01" value="0"></div><div class="fld"><label>Amort. anticipo (%)</label><input id="npAmortPct" type="number" step="1" min="0" max="100" value="0"></div></div>'+
       '<div class="frow" style="margin-top:6px"><button class="btn g" onclick="UI.guardarPedido()">Crear pedido</button><button class="btn r" onclick="UI.cerrarModal()">Cancelar</button></div>'+
       '<div class="hint">El disponible arranca igual al monto; se irá descontando al facturar.</div>';
     document.getElementById('modalBg').classList.add('on');
@@ -717,7 +761,7 @@ var UI={
   guardarPedido:function(){
     var o={pedido:document.getElementById('npNum').value.trim(),desc:document.getElementById('npDesc').value.trim(),
       monto:document.getElementById('npMonto').value,moneda:document.getElementById('npMon').value,
-      plazo:document.getElementById('npPlazo').value,anticipo:document.getElementById('npAnt').value};
+      plazo:document.getElementById('npPlazo').value,anticipo:document.getElementById('npAnt').value,amortPct:document.getElementById('npAmortPct').value};
     var res=Proc.crearPedido(o);if(res.err){toast(res.err);return;}
     this.cerrarModal();this.postWrite();toast('Pedido '+o.pedido+' creado');
   },
@@ -729,14 +773,14 @@ var UI={
     document.getElementById('modalBody').innerHTML=
       '<div class="frow"><div class="fld"><label>N° Pedido</label><input id="epNum" value="'+q(pedNum(p.pedido))+'"></div><div class="fld"><label>Moneda</label><select id="epMon"><option'+(p.moneda==='USD'?' selected':'')+'>USD</option><option'+(p.moneda==='Bs'?' selected':'')+'>Bs</option></select></div></div>'+
       '<div class="frow"><div class="fld" style="flex:1"><label>Descripción</label><input id="epDesc" class="wide" style="min-width:320px" value="'+q(p.desc||'')+'"></div></div>'+
-      '<div class="frow"><div class="fld"><label>Monto</label><input id="epMonto" type="number" step="0.01" value="'+(+p.monto||0)+'"></div><div class="fld"><label>Plazo (días)</label><input id="epPlazo" type="number" value="'+(+p.plazo||0)+'"></div><div class="fld"><label>Anticipo</label><input id="epAnt" type="number" step="0.01" value="'+(+p.anticipo||0)+'"></div></div>'+
+      '<div class="frow"><div class="fld"><label>Monto</label><input id="epMonto" type="number" step="0.01" value="'+(+p.monto||0)+'"></div><div class="fld"><label>Plazo (días)</label><input id="epPlazo" type="number" value="'+(+p.plazo||0)+'"></div><div class="fld"><label>Anticipo</label><input id="epAnt" type="number" step="0.01" value="'+(+p.anticipo||0)+'"></div><div class="fld"><label>Amort. anticipo (%)</label><input id="epAmortPct" type="number" step="1" min="0" max="100" value="'+(+p.amortPct||0)+'"></div></div>'+
       '<div class="frow" style="margin-top:6px"><button class="btn g" onclick="UI.guardarEdicionPedido(\''+sid(pedNum(ped))+'\')">Guardar cambios</button><button class="btn r" onclick="UI.cerrarModal()">Cancelar</button></div>'+
       '<div class="hint">Cambiar el N° de pedido actualiza también sus valuaciones y facturas asociadas. El disponible se recalcula con el monto y lo ya facturado; no se altera lo facturado.</div>';
     document.getElementById('modalBg').classList.add('on');
   },
   guardarEdicionPedido:function(orig){
     var c={pedido:document.getElementById('epNum').value.trim(),desc:document.getElementById('epDesc').value.trim(),moneda:document.getElementById('epMon').value,
-      monto:document.getElementById('epMonto').value,plazo:document.getElementById('epPlazo').value,anticipo:document.getElementById('epAnt').value};
+      monto:document.getElementById('epMonto').value,plazo:document.getElementById('epPlazo').value,anticipo:document.getElementById('epAnt').value,amortPct:document.getElementById('epAmortPct').value};
     var res=Proc.editarPedido(orig,c);if(res.err){toast(res.err);return;}
     this.cerrarModal();this.postWrite();toast('Pedido actualizado');
   },
@@ -749,6 +793,7 @@ var UI={
     document.getElementById('modalTit').textContent='Pedido '+pedNum(ped)+(p?' · '+p.desc:'');
     document.getElementById('modalBody').innerHTML=
       (p?'<div class="info-pedido" style="margin-bottom:10px"><span>Moneda <b>'+p.moneda+'</b></span><span>Monto <b>'+money(p.monto)+'</b></span><span>Facturado <b>'+money(p.facturado)+'</b></span><span>Disponible <b>'+money(p.disponible)+'</b></span><span>Avance <b>'+pct(pedAvance(p))+'</b></span></div>':'')+
+      (p&&(+p.anticipo||0)>0?'<div class="info-pedido" style="margin-bottom:10px"><span>Anticipo <b>'+money(p.anticipo)+'</b></span>'+(p.amortPct?'<span>Amortiza <b>'+p.amortPct+'%</b></span>':'')+'<span>Amortizado <b style="color:var(--purple)">'+money(anticipoAmortizado(p.pedido))+'</b></span><span>Saldo anticipo <b style="color:'+(saldoAnticipo(p)>0.01?'var(--navy)':'var(--green)')+'">'+money(saldoAnticipo(p))+'</b></span></div>':'')+
       (p&&pedCulminado(p)?'<div class="info-pedido" style="margin-bottom:10px;background:#e6fbf3;border:1px solid #b7ecd6"><span>Estado <b style="color:var(--green)">Culminado</b></span><span>Fecha de cierre <b>'+(p.fechaCierre?fdate(p.fechaCierre):'— (sin fecha)')+'</b></span><span>Ejecutado (facturado) <b>'+money(p.facturado)+'</b></span><span>Saldo no ejecutado <b>'+money(p.disponible)+'</b></span></div>':'')+
       '<div class="info-pedido" style="margin-bottom:10px"><span>Facturas <b>'+fs.length+'</b></span><span><b>'+pagN+'</b> pagadas</span><span><b>'+penN+'</b> pendientes</span><span>Cobrado <b style="color:var(--green)">'+money(cob)+'</b></span><span>Por cobrar <b style="color:'+(pc>0.01?'var(--red)':'var(--green)')+'">'+money(pc)+'</b></span></div>'+
       '<div style="max-height:52vh;overflow:auto"><table class="itemtbl"><thead><tr><th>Factura</th><th class="center">Fecha</th><th class="center">HES</th><th style="width:100px">Base</th><th style="width:100px">Total</th><th style="width:100px">Por cobrar</th><th class="center">Estado</th></tr></thead><tbody>'+(rows||'<tr><td colspan="7" class="empty">Sin facturas activas para este pedido</td></tr>')+'</tbody></table></div>'+
@@ -863,7 +908,7 @@ var UI={
     }
     var kp='<div class="kpis">'+
       kpi('navy','Facturas',F.length,cob.length+' cobradas · '+porc.length+' por cobrar')+
-      kpi('green','Cobrado',money0(mCob),'')+
+      kpi('green','Cobrado',money0(mCob),'efectivo')+(F.reduce(function(a,f){return a+(+f.amortizado||0);},0)>0.01?kpi('purple','Amortizado',money0(F.reduce(function(a,f){return a+(+f.amortizado||0);},0)),'con anticipo'):'')+
       kpi('red','Por cobrar',money0(mPC),porc.length+' facturas')+
       kpi('blue','Base total',money0(F.reduce(function(a,f){return a+f.base;},0)),'')+'</div>';
     // lista segun filtro
@@ -908,11 +953,12 @@ var UI={
     var tBase=list.reduce(function(a,f){return a+(+f.base||0);},0);
     var tTotal=list.reduce(function(a,f){return a+(+f.total||0);},0);
     var tCobr=list.reduce(function(a,f){return a+(+f.pagos||0);},0);
+    var tAmort=list.reduce(function(a,f){return a+(+f.amortizado||0);},0);
     var tPC=list.reduce(function(a,f){return a+(esPorCobrar(f)?(+f.porCobrar||0):0);},0);
     var tfoot=list.length?('<tfoot><tr class="tfoot-row" style="background:#e8eef6;font-weight:700;border-top:2px solid var(--navy2)">'+
       '<td colspan="5" style="text-align:right;color:var(--navy)">TOTAL · '+list.length+' factura(s)</td>'+
       '<td class="num">'+money(tBase)+'</td><td class="num">'+money(tTotal)+'</td><td class="num" style="color:'+(tPC>0.01?'var(--red)':'var(--green)')+'">'+money(tPC)+'</td>'+
-      '<td class="center" colspan="5" style="font-weight:600;color:var(--navy2)">Cobrado: '+money(tCobr)+'</td></tr></tfoot>'):'';
+      '<td class="center" colspan="5" style="font-weight:600;color:var(--navy2)">Cobrado: '+money(tCobr)+(tAmort>0.01?' · Amortizado: '+money(tAmort):'')+'</td></tr></tfoot>'):'';
     var titulo=filt==='porcobrar'?'Por cobrar & aging':filt==='cobradas'?'Cobradas':'Todas las facturas';
     var tbl='<div class="card"><div class="section-hdr">'+titulo+'<span class="section-hdr-right">'+list.length+' facturas'+(list.length>700?' (mostrando 700)':'')+'</span></div><div class="section-body">'+seg+
       '<table id="tF"><thead><tr>'+
@@ -928,9 +974,9 @@ var UI={
   exportarFacturas:function(){
     var list=this.facList||[];
     if(!list.length){toast('No hay facturas para exportar');return;}
-    var hs=['Factura','Pedido','Descripción','HES','Moneda','Base','IVA','Total','Por cobrar','Estado','Fecha','Vencimiento','Mora (días)','F. Pago'];
+    var hs=['Factura','Pedido','Descripción','HES','Moneda','Base','IVA','Total','Por cobrar','Cobrado (efvo)','Amortizado','Estado','Fecha','Vencimiento','Mora (días)','F. Pago'];
     var rows=list.map(function(f){var mora=esPorCobrar(f)?diasEntre(f.fVenc):'';
-      return [String(f.factura),pedNum(f.pedido),f.descPedido||'',f.nHes||0,f.moneda||'',f.base,f.iva,f.total,esPorCobrar(f)?f.porCobrar:0,f.status,f.fecha||'',f.fVenc||'',(mora===null||mora==='')?'':mora,f.fPago||''];});
+      return [String(f.factura),pedNum(f.pedido),f.descPedido||'',f.nHes||0,f.moneda||'',f.base,f.iva,f.total,esPorCobrar(f)?f.porCobrar:0,(+f.pagos||0),(+f.amortizado||0),f.status,f.fecha||'',f.fVenc||'',(mora===null||mora==='')?'':mora,f.fPago||''];});
     var out=Xlsx.build([{name:'Facturas',headers:hs,rows:rows}]);
     var nm='Caleva_facturas_'+(this.facFiltro||'todas')+'_'+new Date().toISOString().slice(0,10)+'.xlsx';
     saveFile(nm,out,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet').then(function(ok){if(ok)toast(list.length+' facturas exportadas');});
@@ -1019,7 +1065,7 @@ var Export={
     var vh=['FECHA','ESTACION','PEDIDO','VAL','MONTO USD','HES','FACT','DESCRIPCION','FECHA HES','ESTADO','ORIGEN'];
     var vr=Store.data.valuaciones.map(function(v){return [v.fecha||'',v.estacion||'',pedNum(v.pedido),v.val||'',+v.montoUSD||0,String(v.hes||''),String(v.fact||hs[String(v.hes||'').trim()]||''),v.desc||'',v.fechaHes||'',estadoVal(v,hs),v.origen==='app'?'APP':'Excel'];});
     var dh=['No. Factura','Fecha','Año','Mes','Cliente','No. Pedido','Desc. Pedido','No. HES','Descripción','BASE','IVA 16%','TOTAL FACTURA','ISLR 2%','BASE - ISLR','Moneda','Tasa BCV','Pagos','Por Cobrar','STATUS','Fecha Venc','Fecha Pago','Estacion','Valuacion','ORIGEN'];
-    var dr=[];Store.data.facturas.forEach(function(f){(f.lineas||[]).forEach(function(l){var b=+l.base||0;var iva=r2(b*0.16),islr=r2(b*0.02),bi=r2(b-islr);var pag=f.status==='Pagada'?bi:0,pc=f.status==='Pagada'?0:bi;
+    var dr=[];Store.data.facturas.forEach(function(f){(f.lineas||[]).forEach(function(l){var b=+l.base||0;var iva=r2(b*0.16),islr=r2(b*0.02),bi=r2(b-islr);var pag=f.status==='Pagada'?b:0,pc=f.status==='Pagada'?0:b;
       dr.push([String(f.factura),f.fecha||'',+f.anio||'',+f.mes||'',f.cliente||'',pedNum(f.pedido),f.descPedido||'',String(l.hes||''),l.desc||'',b,iva,r2(b+iva),islr,bi,f.moneda||'',+f.tasa||0,pag,pc,f.status,f.fVenc||'',f.fPago||'',l.estacion||'',l.val||'',f.origen==='app'?'APP':'Excel']);});});
     var ph=['PEDIDO','DESCRIPCION','MONTO PEDIDO','MONEDA','PLAZO DIAS','ANTICIPO','FACTURADO','DISPONIBLE','% AVANCE'];
     var pr=pedidosReales().map(function(p){return [pedNum(p.pedido),p.desc||'',+p.monto||0,p.moneda||'',+p.plazo||0,+p.anticipo||0,+p.facturado||0,+p.disponible||0,+p.avance||0];});
@@ -1038,6 +1084,9 @@ function pedCulminado(p){return !!(p&&(p.cerrado||pedAvance(p)>=0.9995));}
 function hesSet(){var s={};Store.data.facturas.forEach(f=>(f.lineas||[]).forEach(l=>{var h=String(l.hes||'').trim();if(h)s[h]=f.factura;}));return s;}
 function estadoVal(v,hs){var h=String(v.hes||'').trim();if(!h)return 'Pendiente HES';return (String(v.fact||'').trim()||hs[h])?'Facturada':'Por facturar';}
 function pedidoPorNum(num){return Store.data.pedidos.find(p=>pedNum(p.pedido)===pedNum(num));}
+/* anticipo: cuánto se ha amortizado y cuánto queda por amortizar en un pedido */
+function anticipoAmortizado(ped){var n=pedNum(ped);return Math.round(Store.data.facturas.reduce(function(a,f){return a+(pedNum(f.pedido)===n?(+f.amortizado||0):0);},0)*100)/100;}
+function saldoAnticipo(p){if(!p)return 0;return Math.round(((+p.anticipo||0)-anticipoAmortizado(p.pedido))*100)/100;}
 function toast(msg){var t=document.getElementById('toast');t.textContent=msg;t.classList.add('on');setTimeout(()=>t.classList.remove('on'),2600);}
 function saveFile(name,data,mime){
   if(window.showSaveFilePicker){
@@ -1092,18 +1141,25 @@ var Proc={
     var fobj={factura:String(facturaNum),fecha:fecha,anio:d.getFullYear(),mes:d.getMonth()+1,cliente:'Telefónica Venezolana C.A.',
       pedido:pedNum(pedido),descPedido:ped.desc,moneda:ped.moneda,tasa:+tasa||0,status:'Pendiente',
       fVenc:venc.toISOString().slice(0,10),fPago:'',base:r2(base),iva:r2(iva),total:r2(total),islr:r2(islr),baseIslr:r2(bi),
-      pagos:0,porCobrar:r2(bi),lineas:lineas,nHes:lineas.length,origen:'app'};
+      pagos:0,porCobrar:r2(base),lineas:lineas,nHes:lineas.length,origen:'app'};
     Store.data.facturas.push(fobj);
     idxs.forEach(i=>{Store.data.valuaciones[i].estado='4. Facturada';});
     // actualizar pedido: facturado + / disponible -
     ped.facturado=r2((+ped.facturado||0)+base);ped.disponible=r2((+ped.disponible||0)-base);if(ped.monto>0)ped.avance=r2(ped.facturado/ped.monto);
     Store.save();return {ok:fobj};
   },
-  registrarPago:function(facturaNum,fecha,monto){
+  registrarPago:function(facturaNum,fecha,monto,amort){
     if(!Auth.puedeEditar('facturas'))return {err:'Sin permiso para registrar pagos'};
     var f=Store.data.facturas.find(x=>String(x.factura)===String(facturaNum));if(!f)return {err:'Factura no encontrada.'};
     var r2=n=>Math.round(n*100)/100;
-    f.pagos=r2((+f.pagos||0)+(+monto||0));f.porCobrar=r2((+f.baseIslr||0)-f.pagos);f.fPago=fecha;
+    var efe=+monto||0, am=+amort||0;
+    if(efe<0||am<0)return {err:'Los montos no pueden ser negativos.'};
+    if(am>0){var p=pedidoPorNum(f.pedido);var saldo=saldoAnticipo(p);
+      if(am>saldo+0.01)return {err:'La amortización ('+money(am)+') supera el saldo de anticipo disponible ('+money(saldo)+') del pedido '+pedNum(f.pedido)+'.'};}
+    f.pagos=r2((+f.pagos||0)+efe);
+    f.amortizado=r2((+f.amortizado||0)+am);
+    f.porCobrar=r2((+f.base||0)-f.pagos-f.amortizado);
+    if(fecha)f.fPago=fecha;
     if(f.porCobrar<=0.01){f.status='Pagada';f.porCobrar=0;}
     Store.save();return {ok:f};
   },
@@ -1112,6 +1168,33 @@ var Proc={
     var f=Store.data.facturas.find(x=>String(x.factura)===String(facturaNum));if(!f)return {err:'Factura no encontrada.'};
     if(fecha&&!/^\d{4}-\d{2}-\d{2}$/.test(fecha))return {err:'Fecha inválida.'};
     f.fPago=fecha||'';Store.save();return {ok:f};
+  },
+  ajustarAmortizacion:function(facturaNum,amort){
+    if(!Auth.puedeEditar('facturas'))return {err:'Sin permiso para ajustar amortización'};
+    var f=Store.data.facturas.find(x=>String(x.factura)===String(facturaNum));if(!f)return {err:'Factura no encontrada.'};
+    var p=pedidoPorNum(f.pedido);if(!p||!((+p.anticipo||0)>0))return {err:'El pedido de esta factura no tiene anticipo.'};
+    var r2=function(n){return Math.round(n*100)/100;};
+    var base=+f.base||0, am=+amort||0;
+    if(am<0)return {err:'El monto no puede ser negativo.'};
+    if(am>base+0.01)return {err:'La amortización no puede superar la base de la factura ('+money(base)+').'};
+    var disp=r2(saldoAnticipo(p)+(+f.amortizado||0));
+    if(am>disp+0.01)return {err:'La amortización ('+money(am)+') supera el anticipo disponible ('+money(disp)+').'};
+    f.amortizado=r2(am);
+    f.pagos=r2(base-am);
+    f.porCobrar=r2(base-f.pagos-f.amortizado);
+    if(f.porCobrar<=0.01){f.porCobrar=0;if(f.pagos+f.amortizado>=base-0.01)f.status='Pagada';}
+    Store.save();return {ok:f};
+  },
+  normalizarBase:function(){
+    /* cobranza referida al monto BASE (base-ISLR queda solo como referencia de banco) */
+    var r2=function(n){return Math.round(n*100)/100;};var n=0;
+    Store.data.facturas.forEach(function(f){
+      var base=+f.base||0, am=+f.amortizado||0;
+      if(f.status==='Pagada'){f.pagos=r2(base-am);f.porCobrar=0;}
+      else{f.porCobrar=r2(base-(+f.pagos||0)-am);if(f.porCobrar<0)f.porCobrar=0;}
+      n++;
+    });
+    return n;
   },
   eliminarFactura:function(fac){
     if(!Auth.puedeBorrar())return {err:'Solo el administrador puede eliminar facturas'};
@@ -1146,7 +1229,7 @@ var Proc={
     if(!/^\d+$/.test(String(o.pedido)))return {err:'El N° de pedido debe ser numérico.'};
     if(Store.data.pedidos.some(p=>pedNum(p.pedido)===String(o.pedido)))return {err:'El pedido '+o.pedido+' ya existe.'};
     var r2=function(n){return Math.round((+n||0)*100)/100;};
-    Store.data.pedidos.push({pedido:String(o.pedido),desc:o.desc||'',monto:r2(o.monto),moneda:o.moneda||'USD',plazo:+o.plazo||0,anticipo:r2(o.anticipo),facturado:0,disponible:r2(o.monto),avance:0,origen:'app'});
+    Store.data.pedidos.push({pedido:String(o.pedido),desc:o.desc||'',monto:r2(o.monto),moneda:o.moneda||'USD',plazo:+o.plazo||0,anticipo:r2(o.anticipo),amortPct:Math.max(0,Math.min(100,+o.amortPct||0)),facturado:0,disponible:r2(o.monto),avance:0,origen:'app'});
     Store.save();return {ok:1};
   },
   editarPedido:function(orig,c){
@@ -1169,6 +1252,7 @@ var Proc={
     if(c.moneda!==undefined)p.moneda=c.moneda;
     if(c.plazo!==undefined)p.plazo=+c.plazo||0;
     if(c.anticipo!==undefined)p.anticipo=r2(c.anticipo);
+    if(c.amortPct!==undefined)p.amortPct=Math.max(0,Math.min(100,+c.amortPct||0));
     if(c.monto!==undefined){p.monto=r2(c.monto);p.disponible=r2(p.monto-(+p.facturado||0));p.avance=p.monto>0?r2((+p.facturado||0)/p.monto):0;}
     Store.save();return {ok:1};
   }
