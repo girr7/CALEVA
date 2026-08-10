@@ -276,7 +276,7 @@ tr:hover td{background:#f2f5ff}
   <div class="tab proc" data-tab="val" onclick="UI.tab('val',this)"><span class="tico" style="color:#a780f5"><svg viewBox="0 0 24 24" width="15" height="15"><rect x="5" y="4.5" width="14" height="16.5" rx="2.4" fill="currentColor" opacity=".3"/><rect x="8.5" y="2.8" width="7" height="3.4" rx="1.2" fill="currentColor"/><path d="M8.5 11h7M8.5 14.5h5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span>Valuaciones</div>
   <div class="tab proc" data-tab="hes" onclick="UI.tab('hes',this)"><span class="tico" style="color:#38bdf8"><svg viewBox="0 0 24 24" width="15" height="15"><circle cx="8.5" cy="8.5" r="4.2" fill="currentColor" opacity=".32"/><circle cx="8.5" cy="8.5" r="1.7" fill="currentColor"/><path d="M11.5 11.5 20 20M16.5 16.5l2-2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/></svg></span>Asignar HES</div>
   <div class="tab proc" data-tab="fact" onclick="UI.tab('fact',this)"><span class="tico" style="color:#f472b6"><svg viewBox="0 0 24 24" width="15" height="15"><rect x="5" y="3" width="14" height="18" rx="2.4" fill="currentColor" opacity=".3"/><path d="M8.5 8h7M8.5 11.5h7M8.5 15h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span>Facturar</div>
-  <div class="tab proc" data-tab="usuarios" onclick="UI.tab('usuarios',this)" style="display:none"><span class="tico" style="color:#8b8ef6"><svg viewBox="0 0 24 24" width="15" height="15"><circle cx="9" cy="8" r="3.6" fill="currentColor"/><path d="M2.4 20.4c0-3.7 3-6.2 6.6-6.2s6.6 2.5 6.6 6.2z" fill="currentColor" opacity=".3"/><circle cx="17.2" cy="8.6" r="2.7" fill="currentColor" opacity=".6"/></svg></span>Usuarios</div>
+  <div class="tab proc" data-tab="usuarios" onclick="UI.tab('usuarios',this)" style="display:none"><span class="tico" style="color:#8b8ef6"><svg viewBox="0 0 24 24" width="15" height="15"><circle cx="9" cy="8" r="3.6" fill="currentColor"/><path d="M2.4 20.4c0-3.7 3-6.2 6.6-6.2s6.6 2.5 6.6 6.2z" fill="currentColor" opacity=".3"/><circle cx="17.2" cy="8.6" r="2.7" fill="currentColor" opacity=".6"/></svg></span>Permisos</div>
 </div>
 
 <div class="wrap">
@@ -377,7 +377,7 @@ var SB={
 
 /* ============ AUTENTICACIÓN (Supabase Auth · REST) ============ */
 var Auth={
-  session:null, role:null, permisos:null, KEY:'caleva_session',
+  session:null, role:null, permisos:null, suiteAdmin:false, KEY:'caleva_session',
   base:function(){return (SB.url||'').replace(/\/+$/,'').replace(/\/rest\/v1$/,'');},
   load:function(){try{this.session=JSON.parse(localStorage.getItem(this.KEY));}catch(e){this.session=null;}},
   save:function(){try{localStorage.setItem(this.KEY,JSON.stringify(this.session));}catch(e){}},
@@ -395,11 +395,13 @@ var Auth={
   /* compat con guardas existentes */
   puedeValuar:function(){return this.puedeEditar('val');},
   puedeFacturacion:function(){return this.puedeEditar('fact');},
-  fetchPerfil:function(){var self=this;var uid=this.uid();if(!uid||!(SB.url&&SB.key)){this.role=null;this.permisos=null;return Promise.resolve();}
-    return fetch(Store.rest()+'perfiles?user_id=eq.'+encodeURIComponent(uid)+'&select=rol,permisos',{headers:{'apikey':SB.key,'Authorization':'Bearer '+this.token()}})
-      .then(function(r){return r.ok?r.json():[];})
-      .then(function(rows){var row=(rows&&rows[0])||{};self.role=row.rol||'usuario';self.permisos=row.permisos||{ver:{},editar:{}};})
-      .catch(function(){self.role='usuario';self.permisos={ver:{},editar:{}};});},
+  fetchPerfil:function(){var self=this;var uid=this.uid();if(!uid||!(SB.url&&SB.key)){this.role=null;this.permisos=null;this.suiteAdmin=false;return Promise.resolve();}
+    var H={'apikey':SB.key,'Authorization':'Bearer '+this.token()};
+    return Promise.all([
+      fetch(Store.rest()+'perfiles?user_id=eq.'+encodeURIComponent(uid)+'&select=rol,permisos',{headers:H}).then(function(r){return r.ok?r.json():[];}).catch(function(){return [];}),
+      fetch(Store.rest()+'rpc/es_suite_admin',{method:'POST',headers:{'apikey':SB.key,'Authorization':'Bearer '+self.token(),'Content-Type':'application/json'},body:'{}'}).then(function(r){return r.ok?r.json():false;}).catch(function(){return false;})
+    ]).then(function(res){var row=(res[0]&&res[0][0])||{};self.role=row.rol||'usuario';self.permisos=row.permisos||{ver:{},editar:{}};self.suiteAdmin=!!res[1];})
+      .catch(function(){self.role='usuario';self.permisos={ver:{},editar:{}};self.suiteAdmin=false;});},
   expired:function(){if(!this.session||!this.session.access_token)return true;var exp=this.session.expires_at||0;return (exp*1000-Date.now())<60000;},
   login:function(email,pass){
     return fetch(this.base()+'/auth/v1/token?grant_type=password',{method:'POST',headers:{'apikey':SB.key,'Content-Type':'application/json'},body:JSON.stringify({email:email,password:pass})})
@@ -592,7 +594,7 @@ var UI={
       var rb=document.getElementById('userRol');if(rb)rb.textContent=Auth.esAdmin()?'Administrador':'Usuario';}
     else{w.style.display='none';}},
   /* pestaña permitida = el usuario puede VER esa sección (usuarios = solo admin) */
-  tabPermitida:function(id){if(id==='usuarios')return Auth.esAdmin();return Auth.puedeVer(id);},
+  tabPermitida:function(id){if(id==='usuarios')return !!Auth.suiteAdmin;/* permisos por módulo: solo super-admin (creación y roles base en el portal) */return Auth.puedeVer(id);},
   primeraTab:function(){var o=['dash','facturas','pedidos','matriz','val','hes','fact','usuarios'];for(var i=0;i<o.length;i++)if(this.tabPermitida(o[i]))return o[i];return null;},
   applyRole:function(){
     var self=this,b=document.body;
@@ -1702,7 +1704,7 @@ var Admin={
     var host=document.getElementById('tab-usuarios');
     if(!Auth.esAdmin()){host.innerHTML='<div class="card"><div class="section-body"><div class="empty">Sección exclusiva del administrador.</div></div></div>';return;}
     host.innerHTML='<div class="card"><div class="section-hdr">Usuarios y permisos<span class="section-hdr-right">define qué ve y qué edita cada usuario</span></div><div class="section-body" id="usrBody">Cargando…</div></div>'+
-      '<div class="hint" style="margin-top:10px">Marca <b>Ver</b> para dar acceso a una sección y <b>Editar</b> para permitir cambios en ella. El <b>borrado</b> (valuaciones, HES, facturas) queda siempre reservado al administrador. Para un usuario nuevo: créalo en Supabase → Authentication → Users; aparecerá aquí y le asignas permisos. No hace falta modificar la app.</div>';
+      '<div class="hint" style="margin-top:10px">Marca <b>Ver</b> para dar acceso a una sección y <b>Editar</b> para permitir cambios en ella. El <b>borrado</b> (valuaciones, HES, facturas) queda siempre reservado al administrador. Para <b>crear usuarios</b> y asignar su rol base usa el <b>portal de la Suite → Usuarios</b>; aquí solo afinas permisos por módulo (personalizado) cuando una plantilla no basta.</div>';
     this.load();
   },
   load:function(){

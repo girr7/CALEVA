@@ -1653,7 +1653,7 @@ const pillReg=t=>`<span class="pill ${(REG[t]||REG.LOTTT).p}">${(REG[t]||REG.LOT
 
 function nav(){
   const badges={personal:activos().length,periodos:DB.periodos.length};
-  const vis=MENU.filter(m=>m.s||Auth.puedeVer(m.k));
+  const vis=MENU.filter(m=>m.k==='usuarios'?false:(m.s||Auth.puedeVer(m.k)));/* usuarios: gestión centralizada en el portal de la Suite */
   const out=[]; vis.forEach((m,i)=>{ if(m.s){ const nx=vis[i+1]; if(nx&&!nx.s) out.push(m); } else out.push(m); });
   document.getElementById('nav').innerHTML=out.map(m=>m.s?`<div class="navsec">${m.s}</div>`:
     `<a class="${VIEW===m.k?'on':''}" onclick="go('${m.k}')" title="${m.t}"><span class="ic" style="--hue:${m.c||'#8fb8ff'}">${m.i}</span><span class="nav-label">${m.t}</span>${badges[m.k]?`<span class="nav-badge">${badges[m.k]}</span>`:''}</a>`).join('')
@@ -1684,7 +1684,7 @@ function render(){
   const sub=document.getElementById('tsub'); if(sub) sub.textContent=SUBTITULOS[VIEW]||'';
   document.title=(TITULOS[VIEW]||'CALEVA')+' · CALEVA Payroll';
   document.getElementById('view').innerHTML=({dash:vDash,quincena:vQuincena,nominas:vNominas,
-    txt:vTxt,personal:vPersonal,prestamos:vPrestamos,historial:vHistorial,periodos:vPeriodos,config:vConfig,usuarios:vUsuarios}[VIEW]||vDash)();
+    txt:vTxt,personal:vPersonal,prestamos:vPrestamos,historial:vHistorial,periodos:vPeriodos,config:vConfig,usuarios:vDash}[VIEW]||vDash)();
   window.scrollTo(0,0);
 }
 

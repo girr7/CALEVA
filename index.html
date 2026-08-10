@@ -76,12 +76,68 @@ body{font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-seri
 <body>
 <header class="top">
   <div class="brand"><img src="data:image/png;base64,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" alt="Corporación CALEVA"><div class="t"><b>Caleva Suite</b><span>Corporación Caleva · plataforma corporativa</span></div></div>
-  <div class="uwrap" id="uwrap"><span class="em" id="uEmail"></span><span class="rol" id="uRol"></span><button class="btn ghost" onclick="logout()">Salir</button></div>
+  <div class="uwrap" id="uwrap"><span class="em" id="uEmail"></span><span class="rol" id="uRol"></span><button class="btn ghost" id="btnUsers" style="display:none" onclick="openUsers()">Usuarios</button><button class="btn ghost" onclick="logout()">Salir</button></div>
 </header>
 <div class="wrap">
   <div class="lead">Selecciona una aplicación</div>
   <div id="grid" class="grid"><div class="spin">Cargando…</div></div>
   <div class="foot"><span>🔒</span> Un solo inicio de sesión para toda la suite · acceso restringido por rol</div>
+</div>
+
+<style>
+#usersBg{position:fixed;inset:0;background:rgba(11,18,40,.55);backdrop-filter:blur(3px);z-index:60;display:none;padding:22px;overflow:auto}
+#usersBg.on{display:block}
+.usPanel{max-width:1120px;margin:0 auto;background:#fff;border-radius:18px;box-shadow:0 24px 70px rgba(11,18,40,.35);overflow:hidden}
+.usHd{display:flex;align-items:center;gap:12px;padding:16px 22px;background:linear-gradient(120deg,#0b1228,#16204a);color:#fff}
+.usHd h2{margin:0;font-size:17px;font-weight:800;letter-spacing:.2px}
+.usHd .sub{font-size:12px;color:#9fb0d8}
+.usHd .sp{flex:1}
+.usHd .x{background:rgba(255,255,255,.14);border:0;color:#fff;width:34px;height:34px;border-radius:9px;font-size:18px;cursor:pointer}
+.usHd .x:hover{background:rgba(255,255,255,.26)}
+.usBody{padding:18px 22px 26px}
+.usNew{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;background:#f6f8fd;border:1px solid #e6ecf7;border-radius:12px;padding:12px 14px;margin-bottom:16px}
+.usNew label{font-size:11px;font-weight:700;color:#516089;display:block;margin-bottom:4px}
+.usNew input,.usNew select{border:1px solid #d5deee;border-radius:9px;padding:8px 10px;font-size:13px;min-width:150px}
+.usNew .grow{flex:1;min-width:200px}
+.usBtn{border:0;border-radius:9px;padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer;color:#fff;background:#3b5bfd}
+.usBtn:hover{filter:brightness(1.06)}
+.usBtn.gray{background:#64748b}
+.usBtn:disabled{opacity:.55;cursor:default}
+.usMsg{font-size:12px;margin-top:6px;min-height:16px}
+.usMsg.err{color:#e11d48}.usMsg.ok{color:#0a8f5b}
+.usTbl{width:100%;border-collapse:collapse;font-size:13px}
+.usTbl th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:#7688ac;padding:8px 10px;border-bottom:2px solid #eef2f8}
+.usTbl td{padding:8px 10px;border-bottom:1px solid #f1f4f9;vertical-align:middle}
+.usTbl tr:hover td{background:#fafbff}
+.usTbl .mail{font-weight:700;color:#1b2547}
+.usTbl select{border:1px solid #d5deee;border-radius:8px;padding:6px 8px;font-size:12.5px;background:#fff;width:100%}
+.usTbl select.on-admin{border-color:#3b5bfd;color:#3b5bfd;font-weight:700}
+.usTbl select.on-no{color:#94a3b8}
+.swrap{display:inline-flex;align-items:center;gap:6px}
+.swrap input{width:16px;height:16px}
+.usFoot{font-size:11.5px;color:#6b7794;margin-top:14px;line-height:1.5}
+.usSpin{padding:30px;text-align:center;color:#7688ac}
+@media(max-width:720px){.usTbl thead{display:none}.usTbl td{display:block;border:0;padding:4px 10px}.usTbl tr{display:block;border-bottom:1px solid #e9eef7;padding:8px 0}}
+</style>
+<div id="usersBg">
+  <div class="usPanel">
+    <div class="usHd">
+      <div><h2>Usuarios de la Suite</h2><div class="sub">Crea cuentas y asigna el rol de cada persona en las tres apps</div></div>
+      <div class="sp"></div>
+      <button class="x" onclick="closeUsers()">×</button>
+    </div>
+    <div class="usBody">
+      <div class="usNew">
+        <div class="grow"><label>Correo del nuevo usuario</label><input id="nuEmail" type="email" placeholder="persona@corpcaleva.com"></div>
+        <div><label>Método</label><select id="nuMode"><option value="invite">Invitar por correo</option><option value="create">Crear con contraseña</option></select></div>
+        <div id="nuPassWrap" style="display:none"><label>Contraseña</label><input id="nuPass" type="text" placeholder="mín. 8 caracteres"></div>
+        <button class="usBtn" id="nuBtn" onclick="crearUsuario()">Crear usuario</button>
+      </div>
+      <div class="usMsg" id="nuMsg"></div>
+      <div id="usList"><div class="usSpin">Cargando usuarios…</div></div>
+      <div class="usFoot">Los cambios de rol se guardan al instante. La creación de cuentas usa una función segura en el servidor (solo super-admins). Para <b>Seguimiento</b>, las plantillas cubren los casos comunes; los permisos por módulo muy específicos se pueden afinar dentro de Seguimiento.</div>
+    </div>
+  </div>
 </div>
 
 <div id="loginBg">
@@ -113,7 +169,8 @@ function hdrs(){return {'apikey':SB.key,'Authorization':'Bearer '+(tok()||SB.key
 
 var APPS=[
  {key:'seguimiento',name:'Seguimiento Caleva',desc:'Valuaciones, HES y facturación de obra',hue:'#3b5bfd',icon:'<svg viewBox="0 0 24 24"><rect x="3" y="12" width="4.2" height="8.4" rx="1.6" fill="currentColor" opacity=".42"/><rect x="9.9" y="4.6" width="4.2" height="15.8" rx="1.6" fill="currentColor"/><rect x="16.8" y="9" width="4.2" height="11.4" rx="1.6" fill="currentColor" opacity=".42"/></svg>',path:'seguimiento/'},
- {key:'nomina',name:'Nómina Caleva',desc:'Quincenas, personal, préstamos y pagos móviles',hue:'#0a8f5b',icon:'<svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="3.2" fill="currentColor" opacity=".3"/><circle cx="12" cy="12" r="3.1" fill="currentColor"/><circle cx="5.6" cy="12" r="1" fill="currentColor"/><circle cx="18.4" cy="12" r="1" fill="currentColor"/></svg>',path:'nomina/'}
+ {key:'nomina',name:'Nómina Caleva',desc:'Quincenas, personal, préstamos y pagos móviles',hue:'#0a8f5b',icon:'<svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="3.2" fill="currentColor" opacity=".3"/><circle cx="12" cy="12" r="3.1" fill="currentColor"/><circle cx="5.6" cy="12" r="1" fill="currentColor"/><circle cx="18.4" cy="12" r="1" fill="currentColor"/></svg>',path:'nomina/'},
+ {key:'obra',name:'Control de Obras',desc:'Centros de costo, materiales y gastos de obra',hue:'#f59e0b',icon:'<svg viewBox="0 0 24 24"><rect x="3" y="4" width="8" height="16" rx="1.6" fill="currentColor" opacity=".32"/><rect x="13" y="9" width="8" height="11" rx="1.6" fill="currentColor"/><path d="M5.3 7.5h3.4M5.3 11h3.4M5.3 14.5h3.4" stroke="currentColor" stroke-width="1.4"/></svg>',path:'costo-obra/index.html'}
 ];
 var ACCESS={};
 
@@ -147,6 +204,14 @@ function nomAccess(sa,row){
   if(r==='gerencia')return {ok:true,badge:'ro',lbl:'Solo lectura'};
   return {ok:false,badge:'no',lbl:'Sin acceso'};
 }
+function obraAccess(sa,row){
+  if(sa)return {ok:true,badge:'admin',lbl:'Admin'};
+  var r=row&&row.rol;
+  if(r==='admin')return {ok:true,badge:'admin',lbl:'Admin'};
+  if(r==='obras')return {ok:true,badge:'acc',lbl:'Acceso'};
+  if(r==='consulta')return {ok:true,badge:'ro',lbl:'Solo lectura'};
+  return {ok:false,badge:'no',lbl:'Sin acceso'};
+}
 function resolver(cb){
   fetch(rest()+'rpc/es_suite_admin',{method:'POST',headers:hdrs(),body:'{}'})
     .then(function(r){return r.ok?r.json():false;})
@@ -154,19 +219,22 @@ function resolver(cb){
       sa=!!sa;
       Promise.all([
         fetch(rest()+'perfiles?user_id=eq.'+encodeURIComponent(uid())+'&select=rol,permisos',{headers:hdrs()}).then(function(r){return r.ok?r.json():[];}).catch(function(){return [];}),
-        fetch(rest()+'perfiles_nomina?user_id=eq.'+encodeURIComponent(uid())+'&select=rol',{headers:hdrs()}).then(function(r){return r.ok?r.json():[];}).catch(function(){return [];})
+        fetch(rest()+'perfiles_nomina?user_id=eq.'+encodeURIComponent(uid())+'&select=rol',{headers:hdrs()}).then(function(r){return r.ok?r.json():[];}).catch(function(){return [];}),
+        fetch(rest()+'perfiles_obra?user_id=eq.'+encodeURIComponent(uid())+'&select=rol',{headers:hdrs()}).then(function(r){return r.ok?r.json():[];}).catch(function(){return [];})
       ]).then(function(res){
         ACCESS.seguimiento=segAccess(sa,(res[0]&&res[0][0])||null);
         ACCESS.nomina=nomAccess(sa,(res[1]&&res[1][0])||null);
+        ACCESS.obra=obraAccess(sa,(res[2]&&res[2][0])||null);
         cb(sa);
       });
-    }).catch(function(){ACCESS.seguimiento={ok:false,badge:'no',lbl:'Sin acceso'};ACCESS.nomina={ok:false,badge:'no',lbl:'Sin acceso'};cb(false);});
+    }).catch(function(){ACCESS.seguimiento={ok:false,badge:'no',lbl:'Sin acceso'};ACCESS.nomina={ok:false,badge:'no',lbl:'Sin acceso'};ACCESS.obra={ok:false,badge:'no',lbl:'Sin acceso'};cb(false);});
 }
 function abrir(path,able){ if(able) location.href=path; }
 function pintar(sa){
   document.getElementById('uwrap').classList.add('on');
   document.getElementById('uEmail').textContent=email()||'';
   var rp=document.getElementById('uRol'); rp.textContent=sa?'Super-admin':'Usuario'; rp.className='rol'+(sa?' super':'');
+  var bu=document.getElementById('btnUsers'); if(bu)bu.style.display=sa?'':'none';
   var html=APPS.map(function(a){
     var ac=ACCESS[a.key]||{ok:false,badge:'no',lbl:'Sin acceso'};
     var cls='app '+(ac.ok?'able':'locked');
@@ -190,6 +258,107 @@ function doLogin(){
     if(r.ok){hideLogin();resolver(pintar);} else msg.textContent=r.err||'No se pudo iniciar sesión';
   });
 }
+/* ===== Usuarios de la Suite (solo super-admin) ===== */
+function fnBase(){return SB.url.replace(/\/+$/,'')+'/functions/v1/';}
+function sbRpc(name,body){
+  return fetch(rest()+'rpc/'+name,{method:'POST',headers:hdrs(),body:JSON.stringify(body||{})})
+    .then(function(r){return r.text().then(function(t){var d=null;try{d=t?JSON.parse(t):null;}catch(e){}if(!r.ok)throw new Error((d&&(d.message||d.error))||t||('HTTP '+r.status));return d;});});
+}
+var SEG_PRESETS={
+  admin:{rol:'admin',permisos:{}},
+  capturista:{rol:'usuario',permisos:{ver:{val:true},editar:{val:true}}},
+  facturacion:{rol:'usuario',permisos:{ver:{dash:true,facturas:true,pedidos:true,matriz:true,val:true,hes:true,fact:true},editar:{facturas:true,hes:true,fact:true}}},
+  lectura:{rol:'usuario',permisos:{ver:{dash:true,facturas:true,pedidos:true,matriz:true,val:true},editar:{}}},
+  sin:{rol:'usuario',permisos:{}}
+};
+var SEG_LBL={admin:'Administrador',capturista:'Capturista',facturacion:'Facturación',lectura:'Solo lectura',sin:'Sin acceso',custom:'Personalizado'};
+function normPerm(p){ // orden estable para comparar
+  p=p||{}; var v=p.ver||{},e=p.editar||{}; var out={ver:{},editar:{}};
+  Object.keys(v).sort().forEach(function(k){if(v[k])out.ver[k]=true;});
+  Object.keys(e).sort().forEach(function(k){if(e[k])out.editar[k]=true;});
+  return JSON.stringify(out);
+}
+function segKey(rol,perm){
+  if(rol==='admin')return 'admin';
+  var np=normPerm(perm);
+  for(var k in SEG_PRESETS){ if(k==='admin')continue; if(normPerm(SEG_PRESETS[k].permisos)===np)return k; }
+  var empty=(!perm||(!Object.keys((perm.ver||{})).length&&!Object.keys((perm.editar||{})).length));
+  return empty?'sin':'custom';
+}
+var USERS=[];
+function openUsers(){document.getElementById('usersBg').classList.add('on');loadUsers();}
+function closeUsers(){document.getElementById('usersBg').classList.remove('on');}
+function loadUsers(){
+  var host=document.getElementById('usList');
+  host.innerHTML='<div class="usSpin">Cargando usuarios…</div>';
+  sbRpc('suite_usuarios',{}).then(function(rows){USERS=rows||[];renderUsers();})
+    .catch(function(e){host.innerHTML='<div class="usSpin">No se pudo cargar ('+esc(e.message)+'). ¿Ejecutaste 08_suite_usuarios.sql?</div>';});
+}
+function opt(v,l,cur){return '<option value="'+v+'"'+(v===cur?' selected':'')+'>'+l+'</option>';}
+function selCls(cur,noVal){return cur==='admin'?'on-admin':(cur===noVal?'on-no':'');}
+function renderUsers(){
+  var me=uid();
+  var rows=USERS.map(function(u,i){
+    var sk=segKey(u.rol_seguimiento,u.seg_permisos);
+    var nk=u.rol_nomina||'sin_acceso'; var ok=u.rol_obra||'sin_acceso';
+    var segSel='<select class="'+selCls(sk==='admin'?'admin':'',(sk==='sin'?'x':''))+'" onchange="setSeg('+i+',this.value)">'
+      +opt('admin','Administrador',sk)+opt('capturista','Capturista',sk)+opt('facturacion','Facturación',sk)+opt('lectura','Solo lectura',sk)+opt('sin','Sin acceso',sk)
+      +(sk==='custom'?opt('custom','Personalizado (en Seguimiento)',sk):'')+'</select>';
+    var nomSel='<select class="'+selCls(nk,'sin_acceso')+'" onchange="setRol('+i+',\'nomina\',this.value)">'
+      +opt('admin','Administrador',nk)+opt('nomina','Acceso',nk)+opt('gerencia','Solo lectura',nk)+opt('sin_acceso','Sin acceso',nk)+'</select>';
+    var obrSel='<select class="'+selCls(ok,'sin_acceso')+'" onchange="setRol('+i+',\'obra\',this.value)">'
+      +opt('admin','Administrador',ok)+opt('obras','Acceso',ok)+opt('consulta','Solo lectura',ok)+opt('sin_acceso','Sin acceso',ok)+'</select>';
+    var isMe=(u.user_id===me);
+    var sup='<span class="swrap"><input type="checkbox" id="sup_'+i+'"'+(u.super_admin?' checked':'')+(isMe?' disabled title="No puedes quitarte a ti mismo"':'')+' onchange="setSuper('+i+')">'+(u.super_admin?'Sí':'')+'</span>';
+    return '<tr><td class="mail">'+esc(u.email||'')+(isMe?' <span style="color:#3b5bfd;font-weight:700">· tú</span>':'')+'</td>'
+      +'<td>'+segSel+'</td><td>'+nomSel+'</td><td>'+obrSel+'</td><td style="text-align:center">'+sup+'</td></tr>';
+  }).join('');
+  document.getElementById('usList').innerHTML=
+    '<table class="usTbl"><thead><tr><th>Usuario</th><th>Seguimiento</th><th>Nómina</th><th>Control de Obras</th><th style="text-align:center">Super-admin</th></tr></thead><tbody>'+rows+'</tbody></table>';
+}
+function flash(m,ok){var el=document.getElementById('nuMsg');el.className='usMsg '+(ok?'ok':'err');el.textContent=m;setTimeout(function(){if(el.textContent===m)el.textContent='';},4000);}
+function setRol(i,app,val){
+  var u=USERS[i];if(!u)return;
+  sbRpc('suite_set_rol',{p_user:u.user_id,p_app:app,p_rol:val}).then(function(){
+    if(app==='nomina')u.rol_nomina=val;else u.rol_obra=val; renderUsers(); flash('Rol actualizado para '+u.email,true);
+  }).catch(function(e){flash('Error: '+e.message,false);loadUsers();});
+}
+function setSeg(i,key){
+  var u=USERS[i];if(!u)return; if(key==='custom')return;
+  var p=SEG_PRESETS[key]||SEG_PRESETS.sin;
+  sbRpc('suite_set_seguimiento',{p_user:u.user_id,p_rol:p.rol,p_permisos:p.permisos}).then(function(){
+    u.rol_seguimiento=p.rol;u.seg_permisos=p.permisos; renderUsers(); flash('Seguimiento: '+SEG_LBL[key]+' para '+u.email,true);
+  }).catch(function(e){flash('Error: '+e.message,false);loadUsers();});
+}
+function setSuper(i){
+  var u=USERS[i];if(!u)return; var on=document.getElementById('sup_'+i).checked;
+  sbRpc('suite_set_superadmin',{p_user:u.user_id,p_on:on}).then(function(){
+    u.super_admin=on; renderUsers(); flash((on?'Marcado':'Quitado')+' super-admin: '+u.email,true);
+  }).catch(function(e){flash('Error: '+e.message,false);loadUsers();});
+}
+function crearUsuario(){
+  var em=document.getElementById('nuEmail').value.trim().toLowerCase();
+  var mode=document.getElementById('nuMode').value, pass=document.getElementById('nuPass').value;
+  if(!em||em.indexOf('@')<0){flash('Correo inválido',false);return;}
+  if(mode==='create'&&pass.length<8){flash('La contraseña debe tener al menos 8 caracteres',false);return;}
+  var btn=document.getElementById('nuBtn');btn.disabled=true;btn.textContent='Creando…';
+  var body={email:em,mode:mode}; if(mode==='create')body.password=pass;
+  fetch(fnBase()+'suite-create-user',{method:'POST',headers:{'apikey':SB.key,'Authorization':'Bearer '+(tok()||SB.key),'Content-Type':'application/json'},body:JSON.stringify(body)})
+    .then(function(r){return r.text().then(function(t){var d=null;try{d=t?JSON.parse(t):null;}catch(e){}if(!r.ok)throw new Error((d&&(d.error))||('HTTP '+r.status));return d;});})
+    .then(function(){
+      document.getElementById('nuEmail').value='';document.getElementById('nuPass').value='';
+      flash(mode==='invite'?('Invitación enviada a '+em):('Usuario '+em+' creado'),true);
+      setTimeout(loadUsers,800);
+    })
+    .catch(function(e){
+      var m=e.message||''; if(/404|not found|Failed to fetch/i.test(m))m='Falta desplegar la Edge Function suite-create-user en Supabase.';
+      flash('Error: '+m,false);
+    })
+    .then(function(){btn.disabled=false;btn.textContent='Crear usuario';});
+}
+document.addEventListener('change',function(e){if(e.target&&e.target.id==='nuMode'){document.getElementById('nuPassWrap').style.display=(e.target.value==='create')?'':'none';}});
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+
 function boot(){
   if(!getS()||expired()){ refresh().then(function(ok){ ok?resolver(pintar):showLogin(); }); }
   else resolver(pintar);
