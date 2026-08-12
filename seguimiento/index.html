@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Caleva · Sistema de Seguimiento</title>
 <link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/png" href="/favicon.png"><link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<style>@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+body,button,input,select,textarea,table,th,td,h1,h2,h3,h4{font-family:Inter,"Segoe UI",system-ui,-apple-system,sans-serif!important}</style>
 <style>
 :root{--navy:#1a2e4a;--navy2:#2c4a6e;--blue:#2e6da4;--green:#27ae60;--red:#c0392b;--orange:#e67e22;--purple:#8e44ad;--cyan:#4fc3f7;--bg:#eef1f5;--bd:#c5d8ec;--ink:#1a2533;--mut:#7a90a8}
 *{margin:0;padding:0;box-sizing:border-box}
@@ -1784,6 +1786,113 @@ function srt(t,c,n){var tb=document.getElementById(t).tBodies[0];var rs=[...tb.r
   rs.sort((x,y)=>{var p=x.cells[c].innerText.replace(/[$,%\s]/g,''),q=y.cells[c].innerText.replace(/[$,%\s]/g,'');if(n){p=parseFloat(p)||0;q=parseFloat(q)||0;return a?p-q:q-p;}return a?p.localeCompare(q):q.localeCompare(p);});
   rs.forEach(r=>tb.appendChild(r));}
 UI.boot();
+</script>
+<script>
+/* ===== Caleva Suite · Auditoría de acciones sensibles (Seguimiento) ===== */
+(function(){ 'use strict';
+  if(typeof Store==='undefined'||typeof Auth==='undefined')return;
+  function A(action,entity,id,after){ try{ fetch(Store.rest()+'rpc/app_audit_write',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},Store.headers()),body:JSON.stringify({p_app:'seguimiento',p_action:action,p_entity:entity||null,p_entity_id:(id==null?null:String(id)),p_before:null,p_after:after||{}})}); }catch(e){} }
+  function wrap(obj,name,mk){ if(!obj||typeof obj[name]!=='function')return; var o=obj[name]; obj[name]=function(){ var r=o.apply(this,arguments); try{ var d=mk(arguments); if(d)A(d.action,d.entity,d.id,d.after); }catch(e){} return r; }; }
+  try{
+    if(typeof UI!=='undefined') wrap(UI,'cerrarProyecto',function(a){return {action:'cierre_proyecto',entity:'proyecto',id:a[0],after:{pedido:a[0]}};});
+    if(typeof Proc!=='undefined'){
+      wrap(Proc,'facturar',function(a){return {action:'facturar',entity:'factura',id:a[2],after:{pedido:a[0],factura:a[2],fecha:a[3],tasa:a[4]}};});
+      wrap(Proc,'registrarPago',function(a){return {action:'pago',entity:'factura',id:a[0],after:{factura:a[0],fecha:a[1],monto:a[2],amortizacion:a[3]}};});
+      wrap(Proc,'eliminarFactura',function(a){return {action:'eliminar_factura',entity:'factura',id:a[0],after:{ref:a[0]}};});
+      wrap(Proc,'eliminarValuacion',function(a){return {action:'eliminar_valuacion',entity:'valuacion',id:a[0],after:{idx:a[0]}};});
+    }
+  }catch(e){}
+  function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+  function openAudit(){ var ov=document.getElementById('segAuditOv'); if(!ov){ ov=document.createElement('div'); ov.id='segAuditOv'; ov.style.cssText='position:fixed;inset:0;background:rgba(11,18,40,.5);z-index:600;display:flex;align-items:flex-start;justify-content:center;padding:30px;overflow:auto';
+      ov.innerHTML='<div style="background:#fff;max-width:900px;width:100%;border-radius:14px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.35)"><div style="display:flex;align-items:center;gap:10px;padding:14px 18px;background:linear-gradient(120deg,#0b1228,#16204a);color:#fff"><b style="flex:1;font-size:15px">Auditoría · Acciones de Seguimiento</b><button id="segAuditX" style="background:rgba(255,255,255,.15);border:0;color:#fff;width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:16px">×</button></div><div id="segAuditBody" style="padding:14px 18px;max-height:70vh;overflow:auto">Cargando…</div></div>';
+      document.body.appendChild(ov); ov.addEventListener('click',function(e){if(e.target===ov)ov.remove();}); document.getElementById('segAuditX').onclick=function(){ov.remove();}; }
+    var body=document.getElementById('segAuditBody'); body.innerHTML='Cargando…';
+    fetch(Store.rest()+'rpc/app_audit_list',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},Store.headers()),body:JSON.stringify({p_app:'seguimiento',p_limit:100})})
+      .then(function(r){return r.ok?r.json():r.json().then(function(e){throw Error(e.message||'error');});})
+      .then(function(rows){ rows=rows||[]; var AL={cierre_proyecto:'Cierre de proyecto',facturar:'Facturación',pago:'Registro de pago',eliminar_factura:'Eliminar factura',eliminar_valuacion:'Eliminar valuación'};
+        body.innerHTML='<table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr style="text-align:left;color:#41527a"><th style="padding:6px 8px">Fecha</th><th>Acción</th><th>Ref.</th><th>Autor</th></tr></thead><tbody>'+(rows.map(function(a){return '<tr style="border-top:1px solid #eef2f8"><td style="padding:6px 8px;white-space:nowrap">'+new Date(a.created_at).toLocaleString()+'</td><td style="font-weight:700;color:#3b5bfd">'+esc(AL[a.action]||a.action)+'</td><td>'+esc(a.entity_id||'')+'</td><td>'+esc(a.actor_email||'')+'</td></tr>';}).join('')||'<tr><td colspan=4 style="padding:12px;color:#7688ac">Sin registros aún.</td></tr>')+'</tbody></table>'; })
+      .catch(function(e){ body.innerHTML='<div style="color:#e11d48;padding:8px">No se pudo cargar ('+esc(e.message)+'). ¿Ejecutaste 12_app_auditoria.sql?</div>'; }); }
+  var tries=0; var iv=setInterval(function(){ tries++; if(tries>30){clearInterval(iv);return;} try{ if(Auth.esAdmin&&Auth.esAdmin()){ clearInterval(iv); if(!document.getElementById('segAuditBtn')){ var b=document.createElement('button'); b.id='segAuditBtn'; b.textContent='Auditoría'; b.title='Registro de acciones sensibles'; b.style.cssText='position:fixed;right:16px;bottom:16px;z-index:400;background:#1b2a63;color:#fff;border:0;border-radius:10px;padding:9px 14px;font-size:12px;font-weight:700;cursor:pointer;box-shadow:0 6px 18px rgba(15,27,61,.25)'; b.onclick=openAudit; document.body.appendChild(b); } } }catch(e){} },1500);
+})();
+</script>
+<script>
+/* ===== Caleva Suite · Indicadores de Seguimiento (Fase 4) ===== */
+(function(){ 'use strict';
+  if(typeof Store==='undefined'||typeof Auth==='undefined')return;
+  function u(n){ return 'USD '+Number(n||0).toLocaleString('es-VE',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+  function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+  function pend(e){ return /Vencida|cobrar|Facturada|Generada|HES/i.test(e||'') && !/Cobrada/i.test(e||''); }
+  function build(){
+    var F=(Store.data&&Store.data.facturas)||[], P=(Store.data&&Store.data.pedidos)||[], V=(Store.data&&Store.data.valuaciones)||[];
+    var m=function(n){ try{ if(typeof money==='function')return money(n);}catch(e){} return u(n); };
+    function esPC(f){ try{ if(typeof esPorCobrar==='function')return esPorCobrar(f);}catch(e){} var s=(f.status||'').toLowerCase(); return s!=='pagada'&&s!=='anulada'&&(+f.porCobrar||0)>0.01; }
+    var now=Date.now(), base=0,cob=0,amort=0,pc=0,venc=0, bk={vig:0,d30:0,d60:0,d90:0,mas:0};
+    F.forEach(function(f){ base+=(+f.base||0); cob+=(+f.pagos||0); amort+=(+f.amortizado||0);
+      if(esPC(f)){ var pcf=(+f.porCobrar||0); pc+=pcf; var mora=(f._mora!=null)?f._mora:(f.fVenc?Math.floor((now-Date.parse(f.fVenc))/86400000):0); if(mora>0)venc+=pcf;
+        var k=mora<=0?'vig':mora<=30?'d30':mora<=60?'d60':mora<=90?'d90':'mas'; bk[k]+=pcf; } });
+    var kpi=function(v,l){return '<div class="ikpi"><div class="v">'+v+'</div><div class="l">'+l+'</div></div>';};
+    var head=kpi(m(base),'Facturado (base)')+kpi(m(cob),'Cobrado')+kpi(m(pc),'Por cobrar')+kpi(m(venc),'Vencido')+kpi(m(amort),'Amortizado anticipo')+kpi((base?Math.round(cob/base*100):0)+'%','% cobrado');
+    function ar(l,v,red){return '<div class="irow"><span class="il"'+(red?' style="color:#e11d48"':'')+'>'+l+'</span><b'+(red?' style="color:#e11d48"':'')+'>'+m(v)+'</b></div>';}
+    var aging=ar('Vigente (al día)',bk.vig)+ar('1–30 días',bk.d30)+ar('31–60 días',bk.d60)+ar('61–90 días',bk.d90)+ar('90+ días',bk.mas,true);
+    var facByNum={}, hesToFac={}; F.forEach(function(f){ if(f.factura!=null)facByNum[String(f.factura)]=f; (f.lineas||[]).forEach(function(ln){ if(ln.hes!=null&&String(ln.hes)!=='')hesToFac[String(ln.hes)]=f; }); });
+    function facOf(v){ if(v.fact&&facByNum[String(v.fact)])return facByNum[String(v.fact)]; if(v.hes&&hesToFac[String(v.hes)])return hesToFac[String(v.hes)]; return null; }
+    function derivEtapa(v){ var f=facOf(v); if(!f)return '1. Generada (sin HES)'; if((f.status||'').toLowerCase()==='pagada'||(+f.porCobrar||0)<=0.01)return '4. Cobrada'; var mo=(f._mora!=null)?f._mora:(f.fVenc?Math.floor((now-Date.parse(f.fVenc))/86400000):0); return mo>0?'3. Vencida (por cobrar)':'2. Facturada (por cobrar)'; }
+    var ORD={'1. Generada (sin HES)':1,'2. Facturada (por cobrar)':2,'3. Vencida (por cobrar)':3,'4. Cobrada':4};
+    var etapas={}; V.forEach(function(v){ var e=derivEtapa(v); if(!etapas[e])etapas[e]={n:0,mo:0}; etapas[e].n++; etapas[e].mo+=(+v.montoUSD||0); });
+    var pipe=Object.keys(etapas).sort(function(a,b){return (ORD[a]||9)-(ORD[b]||9);}).map(function(e){ var x=etapas[e]; var col=/Cobrada/i.test(e)?'#0a8f5b':(/Vencida/i.test(e)?'#e11d48':(/Facturada/i.test(e)?'#ea580c':'#3b5bfd'));
+      return '<div class="irow"><span class="idot" style="background:'+col+'"></span><span class="il">'+esc(e)+'</span><span class="in">'+x.n+'</span><b>'+m(x.mo)+'</b></div>'; }).join('');
+    var byPed={}; F.forEach(function(f){ var pd=String(f.pedido||'—'); if(!byPed[pd])byPed[pd]={cob:0,pc:0}; byPed[pd].cob+=(+f.pagos||0); if(esPC(f))byPed[pd].pc+=(+f.porCobrar||0); });
+    var pk=Object.keys(byPed).sort(); var pedRows=pk.map(function(pd){ var x=byPed[pd]; var pm=P.filter(function(pp){return String(pp.pedido)===pd;})[0]||{}; var ant=(+pm.anticipo||0);
+      var av=(pm.avance!=null)?Math.round(pm.avance*100)+'%':((+pm.monto>0)?Math.round(((+pm.facturado||0)/pm.monto)*100)+'%':'—');
+      return '<tr><td>'+esc(pd)+'</td><td style="text-align:right">'+m(+pm.monto||0)+'</td><td style="text-align:right">'+m(+pm.facturado||0)+'</td><td style="text-align:right">'+m(x.cob)+'</td><td style="text-align:right'+(x.pc>0.01?';color:#e11d48':'')+'">'+m(x.pc)+'</td><td style="text-align:right">'+(ant>0?m(ant):'—')+'</td><td style="text-align:center">'+av+'</td></tr>'; }).join('')||'<tr><td colspan=7 style="color:#7688ac;padding:10px">Sin datos.</td></tr>';
+    function itbl(list,extra){ return '<table class="itbl"><thead><tr><th>Val</th><th>Pedido</th><th>Estación</th><th>HES</th><th>Fecha</th><th style="text-align:right">Monto</th>'+(extra?'<th>Factura</th>':'')+'</tr></thead><tbody>'+list.map(function(v){ var f=extra?hesToFac[String(v.hes)]:null; return '<tr><td>'+esc(v.val||'')+'</td><td>'+esc(v.pedido||'')+'</td><td>'+esc(v.estacion||'')+'</td><td>'+esc(v.hes||'')+'</td><td>'+esc(v.fecha||'')+'</td><td style="text-align:right">'+m(+v.montoUSD||0)+'</td>'+(extra?'<td><b>'+esc(f?f.factura:'')+'</b></td>':'')+'</tr>';}).join('')+'</tbody></table>'; }
+    var sinFactRaw=V.filter(function(v){ return v.hes && !v.fact; });
+    var paraDepurar=sinFactRaw.filter(function(v){ return !!hesToFac[String(v.hes)]; });
+    var sinFactReal=sinFactRaw.filter(function(v){ return !hesToFac[String(v.hes)]; });
+    var depurCard = paraDepurar.length? ('<div class="icard" style="border-color:#e11d48;background:#fff1f3;margin-bottom:14px"><div class="ihd" style="color:#b42318;display:flex;align-items:center;gap:10px">Facturadas pero sin nº de factura en la valuación ('+paraDepurar.length+') <button onclick="window.__segDepurarHES()" style="margin-left:auto;background:#e11d48;color:#fff;border:0;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer">Depurar: vincular por HES y guardar</button></div>'+itbl(paraDepurar,true)+'</div>') : '';
+    var revCard = sinFactReal.length? ('<div class="icard" style="border-color:#f6c000;background:#fffbe9;margin-bottom:14px"><div class="ihd" style="color:#a86f00">Valuaciones con HES realmente sin factura ('+sinFactReal.length+')</div>'+itbl(sinFactReal,false)+'</div>') : '';
+    return depurCard+revCard+'<div class="ikpis">'+head+'</div>'
+      +'<div class="icols"><div class="icard"><div class="ihd">Aging por cobrar (por mora)</div>'+aging+'</div>'
+      +'<div class="icard"><div class="ihd">Valuaciones por etapa (operativo)</div>'+pipe+'</div></div>'
+      +'<div class="icard"><div class="ihd">Por pedido (facturas)</div><table class="itbl"><thead><tr><th>Pedido</th><th style="text-align:right">Monto</th><th style="text-align:right">Facturado</th><th style="text-align:right">Cobrado</th><th style="text-align:right">Por cobrar</th><th style="text-align:right">Anticipo</th><th style="text-align:center">Avance</th></tr></thead><tbody>'+pedRows+'</tbody></table></div>'
+      +'<p style="font-size:11px;color:#6b7794;margin-top:8px">Cifras financieras calculadas desde las facturas (base; cobrado = pagos; por cobrar = base − pagos − amortización de anticipo), igual que el Resumen por pedido. El pipeline por etapa es una vista operativa de las valuaciones (montoUSD).</p>';
+  }
+  window.__segDepurarHES=function(){
+    var F=(Store.data&&Store.data.facturas)||[], V=(Store.data&&Store.data.valuaciones)||[];
+    var h2f={}; F.forEach(function(f){ (f.lineas||[]).forEach(function(ln){ if(ln.hes!=null&&String(ln.hes)!=='')h2f[String(ln.hes)]=f; }); });
+    var n=0; V.forEach(function(v){ if(v.hes && !v.fact){ var f=h2f[String(v.hes)]; if(f){ v.fact=f.factura; n++; } } });
+    if(!n){ alert('No hay valuaciones facturadas pendientes de vincular.'); return; }
+    if(!confirm('Se vincularán '+n+' valuaciones a su factura (por HES) y se guardará en la nube. ¿Continuar?'))return;
+    try{ if(typeof Store!=='undefined'&&typeof Store.save==='function')Store.save(); }catch(e){}
+    alert(n+' valuaciones vinculadas a su factura y guardadas.');
+    try{ document.getElementById('segIndBody').innerHTML=build(); }catch(e){}
+  };
+  function open(){ var ov=document.getElementById('segIndOv'); if(!ov){ ov=document.createElement('div'); ov.id='segIndOv'; ov.style.cssText='position:fixed;inset:0;background:rgba(11,18,40,.5);z-index:600;display:flex;align-items:flex-start;justify-content:center;padding:26px;overflow:auto';
+      ov.innerHTML='<div style="background:#fff;max-width:1000px;width:100%;border-radius:14px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.35)"><div style="display:flex;align-items:center;gap:10px;padding:14px 18px;background:linear-gradient(120deg,#0b1228,#16204a);color:#fff"><b style="flex:1;font-size:15px">Indicadores · Seguimiento</b><button id="segIndX" style="background:rgba(255,255,255,.15);border:0;color:#fff;width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:16px">×</button></div><div id="segIndBody" style="padding:16px 18px;max-height:76vh;overflow:auto"></div></div>';
+      document.body.appendChild(ov); ov.addEventListener('click',function(e){if(e.target===ov)ov.remove();}); document.getElementById('segIndX').onclick=function(){ov.remove();}; }
+    try{ document.getElementById('segIndBody').innerHTML=build(); }catch(e){ document.getElementById('segIndBody').innerHTML='<div style="color:#e11d48">No se pudo calcular ('+esc(e.message)+')</div>'; } }
+  if(!document.getElementById('segIndCss')){ var st=document.createElement('style'); st.id='segIndCss'; st.textContent='#segIndOv .ikpis{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}#segIndOv .ikpi{flex:1 1 130px;background:#f6f8fd;border:1px solid #e6ecf7;border-radius:11px;padding:9px 12px}#segIndOv .ikpi .v{font-size:17px;font-weight:800;color:#1b2547}#segIndOv .ikpi .l{font-size:10.5px;color:#6b7794;text-transform:uppercase;letter-spacing:.04em;margin-top:2px}#segIndOv .icols{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}#segIndOv .icard{border:1px solid #e6ecf7;border-radius:12px;padding:12px 14px}#segIndOv .ihd{font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;color:#3b5bfd;font-weight:800;margin-bottom:8px}#segIndOv .irow{display:flex;align-items:center;gap:9px;font-size:12.5px;color:#41527a;padding:5px 0;border-top:1px solid #f0f2f5}#segIndOv .irow:first-of-type{border-top:0}#segIndOv .idot{width:10px;height:10px;border-radius:50%}#segIndOv .il{flex:1}#segIndOv .in{color:#7688ac;min-width:34px;text-align:right}#segIndOv .irow b{color:#1b2a63;min-width:110px;text-align:right}#segIndOv .itbl{width:100%;border-collapse:collapse;font-size:12.5px}#segIndOv .itbl th{color:#41527a;text-align:left;padding:6px 8px;border-bottom:2px solid #eef2f8;font-size:11px}#segIndOv .itbl td{padding:6px 8px;border-bottom:1px solid #f1f4f9}@media(max-width:720px){#segIndOv .icols{grid-template-columns:1fr}}'; document.head.appendChild(st); }
+  var tries=0; var iv=setInterval(function(){ tries++; if(tries>30){clearInterval(iv);return;} try{ if(Auth.esAdmin&&Auth.esAdmin()){ clearInterval(iv); if(!document.getElementById('segIndBtn')){ var b=document.createElement('button'); b.id='segIndBtn'; b.textContent='Indicadores'; b.style.cssText='position:fixed;right:118px;bottom:16px;z-index:400;background:#3b5bfd;color:#fff;border:0;border-radius:10px;padding:9px 14px;font-size:12px;font-weight:700;cursor:pointer;box-shadow:0 6px 18px rgba(59,91,253,.3)'; b.onclick=open; document.body.appendChild(b); } } }catch(e){} },1500);
+})();
+</script>
+<script>
+/* ===== Caleva Suite · Respaldo/Restauración + accesibilidad (Fase 6) ===== */
+(function(){ 'use strict';
+  if(typeof Store==='undefined'||typeof Auth==='undefined')return;
+  if(!document.getElementById('a11yFocusCss')){ var fc=document.createElement('style'); fc.id='a11yFocusCss'; fc.textContent='a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,[tabindex]:focus-visible{outline:2px solid #22d3ee!important;outline-offset:2px!important}'; document.head.appendChild(fc); }
+  function ts(){ var d=new Date(),z=function(n){return (n<10?'0':'')+n;}; return d.getFullYear()+z(d.getMonth()+1)+z(d.getDate())+'_'+z(d.getHours())+z(d.getMinutes()); }
+  function download(){ try{ var blob=new Blob([JSON.stringify(Store.data,null,2)],{type:'application/json'}); var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='Respaldo_Seguimiento_'+ts()+'.json'; document.body.appendChild(a); a.click(); a.remove(); }catch(e){ alert('No se pudo generar el respaldo: '+e.message); } }
+  function restore(file){ var r=new FileReader(); r.onload=function(){ var obj; try{ obj=JSON.parse(r.result); }catch(e){ alert('Archivo inválido: '+e.message); return; }
+    if(!obj||typeof obj!=='object'||!(('facturas' in obj)||('valuaciones' in obj)||('pedidos' in obj))){ alert('No parece un respaldo de Seguimiento.'); return; }
+    if(!confirm('RESTAURAR reemplazará TODOS los datos actuales de Seguimiento por los del archivo. No se puede deshacer. ¿Continuar?'))return;
+    if(!confirm('Confirmación final: ¿reemplazar los datos actuales por el respaldo?'))return;
+    try{ Store.data=obj; if(typeof Store.save==='function')Store.save(); alert('Datos restaurados. La página se recargará.'); location.reload(); }catch(e){ alert('No se pudo restaurar: '+e.message); } };
+    r.readAsText(file); }
+  function openOv(){ var ov=document.getElementById('segBkOv'); if(ov){return;} ov=document.createElement('div'); ov.id='segBkOv'; ov.style.cssText='position:fixed;inset:0;background:rgba(11,18,40,.5);z-index:600;display:flex;align-items:center;justify-content:center;padding:26px';
+    ov.innerHTML='<div role="dialog" aria-label="Respaldo de Seguimiento" style="background:#fff;max-width:460px;width:100%;border-radius:14px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.35)"><div style="display:flex;align-items:center;gap:10px;padding:14px 18px;background:linear-gradient(120deg,#0b1228,#16204a);color:#fff"><b style="flex:1;font-size:15px">Respaldo · Seguimiento</b><button id="segBkX" aria-label="Cerrar" style="background:rgba(255,255,255,.15);border:0;color:#fff;width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:16px">×</button></div><div style="padding:18px"><p style="font-size:13px;color:#41527a;margin:0 0 12px">Descarga una copia completa del estado (JSON) y guárdala en lugar seguro. Para recuperación rápida, puedes restaurar desde un respaldo previo.</p><button id="segBkDl" style="width:100%;background:#3b5bfd;color:#fff;border:0;border-radius:9px;padding:11px;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:10px">↓ Descargar respaldo (JSON)</button><label style="display:block;border:1px dashed #cdd8f2;border-radius:9px;padding:11px;text-align:center;font-size:12.5px;color:#3b5bfd;cursor:pointer">Restaurar desde archivo…<input id="segBkFile" type="file" accept="application/json,.json" style="display:none"></label></div></div>';
+    document.body.appendChild(ov); ov.addEventListener('click',function(e){if(e.target===ov)ov.remove();}); document.getElementById('segBkX').onclick=function(){ov.remove();}; document.getElementById('segBkDl').onclick=download; document.getElementById('segBkFile').onchange=function(){ if(this.files[0])restore(this.files[0]); }; }
+  var tries=0; var iv=setInterval(function(){ tries++; if(tries>30){clearInterval(iv);return;} try{ if(Auth.esAdmin&&Auth.esAdmin()){ clearInterval(iv); if(!document.getElementById('segBkBtn')){ var b=document.createElement('button'); b.id='segBkBtn'; b.textContent='Respaldo'; b.setAttribute('aria-label','Respaldo y restauración'); b.style.cssText='position:fixed;right:220px;bottom:16px;z-index:400;background:#0a8f5b;color:#fff;border:0;border-radius:10px;padding:9px 14px;font-size:12px;font-weight:700;cursor:pointer;box-shadow:0 6px 18px rgba(10,143,91,.3)'; b.onclick=openOv; document.body.appendChild(b); } } }catch(e){} },1500);
+})();
 </script>
 </body>
 </html>

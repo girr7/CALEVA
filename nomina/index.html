@@ -3774,5 +3774,74 @@ boot();
 })();
 
 </script>
+<script>
+/* ===== Caleva Suite · Auditoría de acciones sensibles (Nómina) ===== */
+(function(){ 'use strict';
+  if(typeof Cloud==='undefined'||typeof Auth==='undefined')return;
+  function A(action,entity,id,after){ try{ fetch(Cloud.rest()+'rpc/app_audit_write',{method:'POST',headers:Cloud.headers(),body:JSON.stringify({p_app:'nomina',p_action:action,p_entity:entity||null,p_entity_id:(id==null?null:String(id)),p_before:null,p_after:after||{}})}); }catch(e){} }
+  function period(){ try{ return (typeof VIEW!=='undefined'&&window.__perActual)||''; }catch(e){ return ''; } }
+  if(typeof window.aprobarNomina==='function'){ var _ap=window.aprobarNomina; window.aprobarNomina=function(){ var r=_ap.apply(this,arguments); try{ A('aprobar_nomina','periodo',period(),{}); }catch(e){} return r; }; }
+  if(typeof window.revertir==='function'){ var _rv=window.revertir; window.revertir=function(estado){ var r=_rv.apply(this,arguments); try{ A('revertir_nomina','periodo',period(),{estado:estado}); }catch(e){} return r; }; }
+  function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+  function openAudit(){ var ov=document.getElementById('nomAuditOv'); if(!ov){ ov=document.createElement('div'); ov.id='nomAuditOv'; ov.style.cssText='position:fixed;inset:0;background:rgba(11,18,40,.5);z-index:600;display:flex;align-items:flex-start;justify-content:center;padding:30px;overflow:auto';
+      ov.innerHTML='<div style="background:#fff;max-width:900px;width:100%;border-radius:14px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.35)"><div style="display:flex;align-items:center;gap:10px;padding:14px 18px;background:linear-gradient(120deg,#0b1228,#16204a);color:#fff"><b style="flex:1;font-size:15px">Auditoría · Acciones de Nómina</b><button id="nomAuditX" style="background:rgba(255,255,255,.15);border:0;color:#fff;width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:16px">×</button></div><div id="nomAuditBody" style="padding:14px 18px;max-height:70vh;overflow:auto">Cargando…</div></div>';
+      document.body.appendChild(ov); ov.addEventListener('click',function(e){if(e.target===ov)ov.remove();}); document.getElementById('nomAuditX').onclick=function(){ov.remove();}; }
+    var body=document.getElementById('nomAuditBody'); body.innerHTML='Cargando…';
+    fetch(Cloud.rest()+'rpc/app_audit_list',{method:'POST',headers:Cloud.headers(),body:JSON.stringify({p_app:'nomina',p_limit:100})})
+      .then(function(r){return r.ok?r.json():r.json().then(function(e){throw Error(e.message||'error');});})
+      .then(function(rows){ rows=rows||[]; var AL={aprobar_nomina:'Aprobación de nómina',revertir_nomina:'Reversión de nómina'};
+        body.innerHTML='<table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr style="text-align:left;color:#41527a"><th style="padding:6px 8px">Fecha</th><th>Acción</th><th>Período</th><th>Autor</th></tr></thead><tbody>'+(rows.map(function(a){return '<tr style="border-top:1px solid #eef2f8"><td style="padding:6px 8px;white-space:nowrap">'+new Date(a.created_at).toLocaleString()+'</td><td style="font-weight:700;color:#3b5bfd">'+esc(AL[a.action]||a.action)+'</td><td>'+esc(a.entity_id||'')+'</td><td>'+esc(a.actor_email||'')+'</td></tr>';}).join('')||'<tr><td colspan=4 style="padding:12px;color:#7688ac">Sin registros aún.</td></tr>')+'</tbody></table>'; })
+      .catch(function(e){ body.innerHTML='<div style="color:#e11d48;padding:8px">No se pudo cargar ('+esc(e.message)+'). ¿Ejecutaste 12_app_auditoria.sql?</div>'; }); }
+  var tries=0; var iv=setInterval(function(){ tries++; if(tries>30){clearInterval(iv);return;} try{ if(Auth.esAdmin&&Auth.esAdmin()){ clearInterval(iv); if(!document.getElementById('nomAuditBtn')){ var b=document.createElement('button'); b.id='nomAuditBtn'; b.textContent='Auditoría'; b.title='Registro de acciones sensibles'; b.style.cssText='position:fixed;right:16px;bottom:16px;z-index:400;background:#1b2a63;color:#fff;border:0;border-radius:10px;padding:9px 14px;font-size:12px;font-weight:700;cursor:pointer;box-shadow:0 6px 18px rgba(15,27,61,.25)'; b.onclick=openAudit; document.body.appendChild(b); } } }catch(e){} },1500);
+})();
+</script>
+<script>
+/* ===== Caleva Suite · Nómina · doble confirmación + indicadores (Fase 5) ===== */
+(function(){ 'use strict';
+  if(typeof Auth==='undefined')return;
+  // Doble confirmación al aprobar la nómina
+  if(typeof window.aprobarNomina==='function'){ var _ap2=window.aprobarNomina; window.aprobarNomina=function(){
+    if(!confirm('Vas a APROBAR la nómina del período. Queda registrada en auditoría. ¿Continuar?'))return;
+    if(!confirm('Confirmación final: ¿aprobar y dejar la nómina lista para pago?'))return;
+    return _ap2.apply(this,arguments); }; }
+  function u(n){ return 'USD '+Number(n||0).toLocaleString('es-VE',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+  function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+  function open(){ var ov=document.getElementById('nomIndOv'); if(!ov){ ov=document.createElement('div'); ov.id='nomIndOv'; ov.style.cssText='position:fixed;inset:0;background:rgba(11,18,40,.5);z-index:600;display:flex;align-items:flex-start;justify-content:center;padding:26px;overflow:auto';
+      ov.innerHTML='<div style="background:#fff;max-width:760px;width:100%;border-radius:14px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.35)"><div style="display:flex;align-items:center;gap:10px;padding:14px 18px;background:linear-gradient(120deg,#0b1228,#16204a);color:#fff"><b style="flex:1;font-size:15px">Indicadores · Nómina</b><button id="nomIndX" style="background:rgba(255,255,255,.15);border:0;color:#fff;width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:16px">×</button></div><div id="nomIndBody" style="padding:16px 18px;max-height:76vh;overflow:auto">Cargando…</div></div>';
+      document.body.appendChild(ov); ov.addEventListener('click',function(e){if(e.target===ov)ov.remove();}); document.getElementById('nomIndX').onclick=function(){ov.remove();}; }
+    var body=document.getElementById('nomIndBody'); body.innerHTML='Cargando…';
+    fetch(Cloud.rest()+SB.table+'?id=eq.1&select=data',{headers:Cloud.headers()}).then(function(r){return r.json();}).then(function(rows){ var d=(rows&&rows[0]&&rows[0].data)||{};
+      var T=d.trabajadores||[], PR=d.prestamos||[];
+      var activos=T.filter(function(t){return t&&t.activo!==false;});
+      var baseMes=activos.reduce(function(s,t){return s+(+t.sueldoBaseUSD||0)+(+t.bonoMensualUSD||0)+(+t.ticketTransporteUSD||0);},0);
+      var vig=PR.filter(function(p){return (+ (p.saldo!=null?p.saldo:0))>0;}); var saldoPr=vig.reduce(function(s,p){return s+(+p.saldo||0);},0);
+      var kpi=function(v,l){return '<div class="nk"><div class="v">'+v+'</div><div class="l">'+l+'</div></div>';};
+      body.innerHTML='<div class="nks">'+kpi(activos.length,'Empleados activos')+kpi(T.length,'Total en nómina')+kpi(u(baseMes),'Nómina base (mensual)')+kpi(u(baseMes/2),'Nómina base (quincenal)')+kpi(vig.length,'Préstamos vigentes')+kpi(u(saldoPr),'Saldo por cobrar (préstamos)')+'</div>'
+        +'<p style="font-size:11.5px;color:#6b7794;margin-top:10px">La «nómina base» estima el costo mensual desde el maestro de trabajadores (sueldo + bono + ticket de los activos). El neto exacto por período depende de las asignaciones/deducciones calculadas en cada quincena.</p>'; })
+      .catch(function(e){ body.innerHTML='<div style="color:#e11d48">No se pudo cargar ('+esc(e.message)+')</div>'; }); }
+  if(!document.getElementById('nomIndCss')){ var st=document.createElement('style'); st.id='nomIndCss'; st.textContent='#nomIndOv .nks{display:flex;gap:10px;flex-wrap:wrap}#nomIndOv .nk{flex:1 1 150px;background:#f6f8fd;border:1px solid #e6ecf7;border-radius:11px;padding:10px 13px}#nomIndOv .nk .v{font-size:18px;font-weight:800;color:#1b2547}#nomIndOv .nk .l{font-size:10.5px;color:#6b7794;text-transform:uppercase;letter-spacing:.04em;margin-top:2px}'; document.head.appendChild(st); }
+  var tries=0; var iv=setInterval(function(){ tries++; if(tries>30){clearInterval(iv);return;} try{ if(Auth.esAdmin&&Auth.esAdmin()){ clearInterval(iv); if(!document.getElementById('nomIndBtn')){ var b=document.createElement('button'); b.id='nomIndBtn'; b.textContent='Indicadores'; b.style.cssText='position:fixed;right:118px;bottom:16px;z-index:400;background:#3b5bfd;color:#fff;border:0;border-radius:10px;padding:9px 14px;font-size:12px;font-weight:700;cursor:pointer;box-shadow:0 6px 18px rgba(59,91,253,.3)'; b.onclick=open; document.body.appendChild(b); } } }catch(e){} },1500);
+})();
+</script>
+<script>
+/* ===== Caleva Suite · Nómina · Respaldo/Restauración + accesibilidad (Fase 6) ===== */
+(function(){ 'use strict';
+  if(typeof Auth==='undefined'||typeof Cloud==='undefined')return;
+  if(!document.getElementById('a11yFocusCss')){ var fc=document.createElement('style'); fc.id='a11yFocusCss'; fc.textContent='a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,[tabindex]:focus-visible{outline:2px solid #22d3ee!important;outline-offset:2px!important}'; document.head.appendChild(fc); }
+  function ts(){ var d=new Date(),z=function(n){return (n<10?'0':'')+n;}; return d.getFullYear()+z(d.getMonth()+1)+z(d.getDate())+'_'+z(d.getHours())+z(d.getMinutes()); }
+  function download(){ fetch(Cloud.rest()+SB.table+'?id=eq.1&select=data',{headers:Cloud.headers()}).then(function(r){return r.json();}).then(function(rows){ var d=(rows&&rows[0]&&rows[0].data)||{}; var blob=new Blob([JSON.stringify(d,null,2)],{type:'application/json'}); var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='Respaldo_Nomina_'+ts()+'.json'; document.body.appendChild(a); a.click(); a.remove(); }).catch(function(e){ alert('No se pudo generar el respaldo: '+e.message); }); }
+  function restore(file){ var r=new FileReader(); r.onload=function(){ var obj; try{obj=JSON.parse(r.result);}catch(e){alert('Archivo inválido: '+e.message);return;}
+    if(!obj||typeof obj!=='object'||!(('trabajadores' in obj)||('periodos' in obj)||('prestamos' in obj))){ alert('No parece un respaldo de Nómina.'); return; }
+    if(!confirm('RESTAURAR reemplazará TODOS los datos de Nómina por los del archivo. No se puede deshacer. ¿Continuar?'))return;
+    if(!confirm('Confirmación final: ¿reemplazar los datos actuales por el respaldo?'))return;
+    var h=Cloud.headers(); h['Prefer']='return=minimal';
+    fetch(Cloud.rest()+SB.table+'?id=eq.1',{method:'PATCH',headers:h,body:JSON.stringify({data:obj})}).then(function(r){ if(!r.ok)throw Error('HTTP '+r.status); alert('Datos restaurados. La página se recargará.'); location.reload(); }).catch(function(e){ alert('No se pudo restaurar: '+e.message); }); };
+    r.readAsText(file); }
+  function openOv(){ if(document.getElementById('nomBkOv'))return; var ov=document.createElement('div'); ov.id='nomBkOv'; ov.style.cssText='position:fixed;inset:0;background:rgba(11,18,40,.5);z-index:600;display:flex;align-items:center;justify-content:center;padding:26px';
+    ov.innerHTML='<div role="dialog" aria-label="Respaldo de Nómina" style="background:#fff;max-width:460px;width:100%;border-radius:14px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.35)"><div style="display:flex;align-items:center;gap:10px;padding:14px 18px;background:linear-gradient(120deg,#0b1228,#16204a);color:#fff"><b style="flex:1;font-size:15px">Respaldo · Nómina</b><button id="nomBkX" aria-label="Cerrar" style="background:rgba(255,255,255,.15);border:0;color:#fff;width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:16px">×</button></div><div style="padding:18px"><p style="font-size:13px;color:#41527a;margin:0 0 12px">Descarga una copia completa del estado (JSON) desde la nube y guárdala en lugar seguro. Para recuperación rápida, puedes restaurar desde un respaldo previo.</p><button id="nomBkDl" style="width:100%;background:#3b5bfd;color:#fff;border:0;border-radius:9px;padding:11px;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:10px">↓ Descargar respaldo (JSON)</button><label style="display:block;border:1px dashed #cdd8f2;border-radius:9px;padding:11px;text-align:center;font-size:12.5px;color:#3b5bfd;cursor:pointer">Restaurar desde archivo…<input id="nomBkFile" type="file" accept="application/json,.json" style="display:none"></label></div></div>';
+    document.body.appendChild(ov); ov.addEventListener('click',function(e){if(e.target===ov)ov.remove();}); document.getElementById('nomBkX').onclick=function(){ov.remove();}; document.getElementById('nomBkDl').onclick=download; document.getElementById('nomBkFile').onchange=function(){ if(this.files[0])restore(this.files[0]); }; }
+  var t2=0; var iv2=setInterval(function(){ t2++; if(t2>30){clearInterval(iv2);return;} try{ if(Auth.esAdmin&&Auth.esAdmin()){ clearInterval(iv2); if(!document.getElementById('nomBkBtn')){ var b=document.createElement('button'); b.id='nomBkBtn'; b.textContent='Respaldo'; b.setAttribute('aria-label','Respaldo y restauración'); b.style.cssText='position:fixed;right:220px;bottom:16px;z-index:400;background:#0a8f5b;color:#fff;border:0;border-radius:10px;padding:9px 14px;font-size:12px;font-weight:700;cursor:pointer;box-shadow:0 6px 18px rgba(10,143,91,.3)'; b.onclick=openOv; document.body.appendChild(b); } } }catch(e){} },1500);
+})();
+</script>
 </body>
 </html>

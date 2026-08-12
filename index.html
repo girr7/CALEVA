@@ -117,6 +117,25 @@ body{font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-seri
 .swrap{display:inline-flex;align-items:center;gap:6px}
 .swrap input{width:16px;height:16px}
 .usFoot{font-size:11.5px;color:#6b7794;margin-top:14px;line-height:1.5}
+.usSummary{display:flex;gap:10px;flex-wrap:wrap;margin:4px 0 12px}
+.usKpi{flex:1 1 120px;min-width:120px;background:#f6f8fd;border:1px solid #e6ecf7;border-radius:11px;padding:9px 12px}
+.usKpi .v{font-size:19px;font-weight:800;color:#1b2547;line-height:1.1}
+.usKpi .l{font-size:10.5px;color:#6b7794;text-transform:uppercase;letter-spacing:.04em;margin-top:2px}
+.usKpi .d{font-size:11px;color:#516089;margin-top:3px}
+.usTools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.usSearch{flex:1 1 220px;min-width:180px;border:1px solid #d5deee;border-radius:9px;padding:8px 11px;font-size:13px}
+.usFilterSel{border:1px solid #d5deee;border-radius:9px;padding:8px 10px;font-size:12.5px;background:#fff}
+.usTools .usToolsSp{flex:1}
+.usTbl td .ago{font-size:11px;color:#7688ac;white-space:nowrap}
+.usTbl td.busy{opacity:.5}
+.usAudit{border:1px solid #e6ecf7;border-radius:12px;overflow:hidden;margin-top:4px}
+.usAudit table{width:100%;border-collapse:collapse;font-size:12.5px}
+.usAudit th{background:#0b1228;color:#fff;text-align:left;padding:7px 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em}
+.usAudit td{padding:6px 10px;border-bottom:1px solid #f1f4f9;vertical-align:top}
+.usAudit tr:hover td{background:#fafbff}
+.usAudit .act{font-weight:700;color:#3b5bfd}
+.usAudit .chg{color:#516089}
+.usAudit .arw{color:#94a3b8}
 .usSpin{padding:30px;text-align:center;color:#7688ac}
 @media(max-width:720px){.usTbl thead{display:none}.usTbl td{display:block;border:0;padding:4px 10px}.usTbl tr{display:block;border-bottom:1px solid #e9eef7;padding:8px 0}}
 </style>
@@ -135,8 +154,17 @@ body{font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-seri
         <button class="usBtn" id="nuBtn" onclick="crearUsuario()">Crear usuario</button>
       </div>
       <div class="usMsg" id="nuMsg"></div>
+      <div id="usSummary" class="usSummary"></div>
+      <div class="usTools">
+        <input id="usSearch" class="usSearch" type="search" placeholder="Buscar por correo…" oninput="renderUsers()">
+        <select id="usFilterApp" class="usFilterSel" onchange="renderUsers()"><option value="">Todas las apps</option><option value="seguimiento">Seguimiento</option><option value="nomina">Nómina</option><option value="obra">Control de Obras</option><option value="super">Super-admin</option></select>
+        <select id="usFilterRol" class="usFilterSel" onchange="renderUsers()"><option value="">Cualquier acceso</option><option value="con">Con acceso</option><option value="admin">Administrador</option><option value="sin">Sin acceso</option></select>
+        <span class="usToolsSp"></span>
+        <button class="usBtn gray" id="usAuditBtn" onclick="toggleAudit()">Registro de accesos</button>
+      </div>
       <div id="usList"><div class="usSpin">Cargando usuarios…</div></div>
-      <div class="usFoot">Los cambios de rol se guardan al instante. La creación de cuentas usa una función segura en el servidor (solo super-admins). Para <b>Seguimiento</b>, las plantillas cubren los casos comunes; los permisos por módulo muy específicos se pueden afinar dentro de Seguimiento.</div>
+      <div id="usAudit" class="usAudit" style="display:none"></div>
+      <div class="usFoot">Los cambios de rol se guardan y quedan registrados en auditoría. La creación de cuentas usa una función segura en el servidor (solo super-admins). Para <b>Seguimiento</b>, las plantillas cubren los casos comunes; los permisos por módulo muy específicos se afinan dentro de Seguimiento.</div>
     </div>
   </div>
 </div>
@@ -297,9 +325,33 @@ function loadUsers(){
 }
 function opt(v,l,cur){return '<option value="'+v+'"'+(v===cur?' selected':'')+'>'+l+'</option>';}
 function selCls(cur,noVal){return cur==='admin'?'on-admin':(cur===noVal?'on-no':'');}
+function agoText(ts){ if(!ts)return 'Nunca'; var d=new Date(ts); if(isNaN(d))return '—'; var s=(Date.now()-d.getTime())/1000; if(s<0)s=0; if(s<60)return 'hace instantes'; if(s<3600)return 'hace '+Math.floor(s/60)+' min'; if(s<86400)return 'hace '+Math.floor(s/3600)+' h'; var dd=Math.floor(s/86400); if(dd<30)return 'hace '+dd+' d'; if(dd<365)return 'hace '+Math.floor(dd/30)+' mes'; return 'hace '+Math.floor(dd/365)+' año'; }
+function accSeg(u){return segKey(u.rol_seguimiento,u.seg_permisos)!=='sin';}
+function accNom(u){return (u.rol_nomina||'sin_acceso')!=='sin_acceso';}
+function accObr(u){return (u.rol_obra||'sin_acceso')!=='sin_acceso';}
+function usSummary(){ var host=document.getElementById('usSummary'); if(!host)return; var n=USERS.length;
+  var seg=USERS.filter(accSeg).length, nom=USERS.filter(accNom).length, obr=USERS.filter(accObr).length;
+  var sup=USERS.filter(function(u){return u.super_admin;}).length;
+  var sinacc=USERS.filter(function(u){return !accSeg(u)&&!accNom(u)&&!accObr(u)&&!u.super_admin;}).length;
+  var now=new Date(); var mes=USERS.filter(function(u){ if(!u.creado)return false; var d=new Date(u.creado); return d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth(); }).length;
+  function kpi(v,l,d){return '<div class="usKpi"><div class="v">'+v+'</div><div class="l">'+l+'</div>'+(d?'<div class="d">'+d+'</div>':'')+'</div>';}
+  host.innerHTML=kpi(n,'Usuarios','')+kpi(seg,'Seguimiento','con acceso')+kpi(nom,'Nómina','con acceso')+kpi(obr,'Control de Obras','con acceso')+kpi(sup,'Super-admins','')+kpi(sinacc,'Sin acceso','')+kpi(mes,'Creadas este mes',''); }
+function usFiltered(){ var q=((document.getElementById('usSearch')||{}).value||'').trim().toLowerCase();
+  var fApp=(document.getElementById('usFilterApp')||{}).value||''; var fRol=(document.getElementById('usFilterRol')||{}).value||'';
+  var out=[]; USERS.forEach(function(u,i){ if(q&&(u.email||'').toLowerCase().indexOf(q)<0)return;
+    if(fApp==='super'){ if(!u.super_admin)return; }
+    else if(fApp){ var r=fApp==='seguimiento'?segKey(u.rol_seguimiento,u.seg_permisos):(fApp==='nomina'?(u.rol_nomina||'sin_acceso'):(u.rol_obra||'sin_acceso'));
+      var has=(fApp==='seguimiento')?(r!=='sin'):(r!=='sin_acceso');
+      if(fRol==='con'&&!has)return; if(fRol==='sin'&&has)return; if(fRol==='admin'&&r!=='admin')return; }
+    else if(fRol){ var anyAdmin=u.super_admin||(u.rol_nomina==='admin')||(u.rol_obra==='admin')||(segKey(u.rol_seguimiento,u.seg_permisos)==='admin');
+      var anyAcc=u.super_admin||accSeg(u)||accNom(u)||accObr(u);
+      if(fRol==='admin'&&!anyAdmin)return; if(fRol==='con'&&!anyAcc)return; if(fRol==='sin'&&anyAcc)return; }
+    out.push({u:u,i:i}); });
+  return out; }
 function renderUsers(){
-  var me=uid();
-  var rows=USERS.map(function(u,i){
+  usSummary();
+  var me=uid(); var list=usFiltered();
+  var rows=list.map(function(x){ var u=x.u,i=x.i;
     var sk=segKey(u.rol_seguimiento,u.seg_permisos);
     var nk=u.rol_nomina||'sin_acceso'; var ok=u.rol_obra||'sin_acceso';
     var segSel='<select class="'+selCls(sk==='admin'?'admin':'',(sk==='sin'?'x':''))+'" onchange="setSeg('+i+',this.value)">'
@@ -311,31 +363,52 @@ function renderUsers(){
       +opt('admin','Administrador',ok)+opt('obras','Acceso',ok)+opt('consulta','Solo lectura',ok)+opt('sin_acceso','Sin acceso',ok)+'</select>';
     var isMe=(u.user_id===me);
     var sup='<span class="swrap"><input type="checkbox" id="sup_'+i+'"'+(u.super_admin?' checked':'')+(isMe?' disabled title="No puedes quitarte a ti mismo"':'')+' onchange="setSuper('+i+')">'+(u.super_admin?'Sí':'')+'</span>';
-    return '<tr><td class="mail">'+esc(u.email||'')+(isMe?' <span style="color:#3b5bfd;font-weight:700">· tú</span>':'')+'</td>'
-      +'<td>'+segSel+'</td><td>'+nomSel+'</td><td>'+obrSel+'</td><td style="text-align:center">'+sup+'</td></tr>';
-  }).join('');
+    return '<tr data-row="'+i+'"><td class="mail">'+esc(u.email||'')+(isMe?' <span style="color:#3b5bfd;font-weight:700">· tú</span>':'')+'</td>'
+      +'<td>'+segSel+'</td><td>'+nomSel+'</td><td>'+obrSel+'</td><td style="text-align:center">'+sup+'</td>'
+      +'<td class="ago" title="'+esc(u.ultimo_acceso||'')+'">'+agoText(u.ultimo_acceso)+'</td></tr>';
+  }).join('')||'<tr><td colspan="6" style="color:#7688ac;padding:14px">Sin coincidencias.</td></tr>';
   document.getElementById('usList').innerHTML=
-    '<table class="usTbl"><thead><tr><th>Usuario</th><th>Seguimiento</th><th>Nómina</th><th>Control de Obras</th><th style="text-align:center">Super-admin</th></tr></thead><tbody>'+rows+'</tbody></table>';
+    '<table class="usTbl"><thead><tr><th>Usuario ('+list.length+')</th><th>Seguimiento</th><th>Nómina</th><th>Control de Obras</th><th style="text-align:center">Super-admin</th><th>Último acceso</th></tr></thead><tbody>'+rows+'</tbody></table>';
 }
 function flash(m,ok){var el=document.getElementById('nuMsg');el.className='usMsg '+(ok?'ok':'err');el.textContent=m;setTimeout(function(){if(el.textContent===m)el.textContent='';},4000);}
+function rowBusy(i,on){var tr=document.querySelector('#usList tr[data-row="'+i+'"]');if(tr)tr.querySelectorAll('td').forEach(function(td){td.classList.toggle('busy',on);td.querySelectorAll('select,input').forEach(function(el){el.disabled=on;});});}
 function setRol(i,app,val){
-  var u=USERS[i];if(!u)return;
+  var u=USERS[i];if(!u)return; var appLbl={nomina:'Nómina',obra:'Control de Obras'}[app]||app;
+  var sensit=(val==='admin'||val==='sin_acceso');
+  if(sensit && !confirm('¿Cambiar el acceso de '+(u.email||'')+' en '+appLbl+' a "'+(val==='admin'?'Administrador':(val==='sin_acceso'?'Sin acceso':val))+'"?')){ renderUsers(); return; }
+  rowBusy(i,true);
   sbRpc('suite_set_rol',{p_user:u.user_id,p_app:app,p_rol:val}).then(function(){
-    if(app==='nomina')u.rol_nomina=val;else u.rol_obra=val; renderUsers(); flash('Rol actualizado para '+u.email,true);
+    if(app==='nomina')u.rol_nomina=val;else u.rol_obra=val; renderUsers(); flash('Acceso de '+appLbl+' actualizado para '+u.email,true);
   }).catch(function(e){flash('Error: '+e.message,false);loadUsers();});
 }
 function setSeg(i,key){
-  var u=USERS[i];if(!u)return; if(key==='custom')return;
-  var p=SEG_PRESETS[key]||SEG_PRESETS.sin;
+  var u=USERS[i];if(!u)return; if(key==='custom'){renderUsers();return;}
+  var sensit=(key==='admin'||key==='sin');
+  if(sensit && !confirm('¿Cambiar el acceso de '+(u.email||'')+' en Seguimiento a "'+SEG_LBL[key]+'"?')){ renderUsers(); return; }
+  var p=SEG_PRESETS[key]||SEG_PRESETS.sin; rowBusy(i,true);
   sbRpc('suite_set_seguimiento',{p_user:u.user_id,p_rol:p.rol,p_permisos:p.permisos}).then(function(){
     u.rol_seguimiento=p.rol;u.seg_permisos=p.permisos; renderUsers(); flash('Seguimiento: '+SEG_LBL[key]+' para '+u.email,true);
   }).catch(function(e){flash('Error: '+e.message,false);loadUsers();});
 }
 function setSuper(i){
   var u=USERS[i];if(!u)return; var on=document.getElementById('sup_'+i).checked;
+  if(!confirm('¿'+(on?'Marcar':'Quitar')+' a '+(u.email||'')+' como super-admin de la suite?'+(on?' Tendrá acceso total a las 3 apps.':''))){ renderUsers(); return; }
+  rowBusy(i,true);
   sbRpc('suite_set_superadmin',{p_user:u.user_id,p_on:on}).then(function(){
     u.super_admin=on; renderUsers(); flash((on?'Marcado':'Quitado')+' super-admin: '+u.email,true);
   }).catch(function(e){flash('Error: '+e.message,false);loadUsers();});
+}
+var _auditOpen=false;
+function toggleAudit(){ _auditOpen=!_auditOpen; var box=document.getElementById('usAudit'), btn=document.getElementById('usAuditBtn');
+  if(!_auditOpen){ box.style.display='none'; if(btn)btn.textContent='Registro de accesos'; return; }
+  box.style.display=''; if(btn)btn.textContent='Ocultar registro'; box.innerHTML='<div class="usSpin" style="padding:16px">Cargando registro…</div>';
+  sbRpc('suite_audit_list',{p_limit:100}).then(function(rows){ rows=rows||[];
+    var AL={role_change:'Cambio de rol',superadmin_on:'Super-admin +',superadmin_off:'Super-admin −',user_create:'Cuenta creada',user_invite:'Invitación'};
+    var AP={seguimiento:'Seguimiento',nomina:'Nómina',obra:'Control de Obras',suite:'Suite'};
+    var body=rows.map(function(a){ var chg = (a.before_val||a.after_val)? ('<span class="chg">'+esc(a.before_val||'')+' <span class="arw">→</span> '+esc(a.after_val||'')+'</span>') : '';
+      return '<tr><td>'+new Date(a.created_at).toLocaleString()+'</td><td class="act">'+esc(AL[a.action]||a.action)+'</td><td>'+esc(AP[a.app]||a.app||'')+'</td><td>'+esc(a.target_email||'')+'</td><td>'+chg+'</td><td>'+esc(a.actor_email||'')+'</td></tr>'; }).join('')||'<tr><td colspan="6" style="padding:12px;color:#7688ac">Sin registros aún.</td></tr>';
+    box.innerHTML='<table><thead><tr><th>Fecha</th><th>Acción</th><th>App</th><th>Usuario</th><th>Cambio</th><th>Autor</th></tr></thead><tbody>'+body+'</tbody></table>';
+  }).catch(function(e){ box.innerHTML='<div class="usSpin" style="padding:16px">No se pudo cargar ('+esc(e.message)+'). ¿Ejecutaste 11_suite_auditoria.sql?</div>'; });
 }
 function crearUsuario(){
   var em=document.getElementById('nuEmail').value.trim().toLowerCase();
@@ -346,9 +419,10 @@ function crearUsuario(){
   var body={email:em,mode:mode}; if(mode==='create')body.password=pass;
   fetch(fnBase()+'suite-create-user',{method:'POST',headers:{'apikey':SB.key,'Authorization':'Bearer '+(tok()||SB.key),'Content-Type':'application/json'},body:JSON.stringify(body)})
     .then(function(r){return r.text().then(function(t){var d=null;try{d=t?JSON.parse(t):null;}catch(e){}if(!r.ok)throw new Error((d&&(d.error))||('HTTP '+r.status));return d;});})
-    .then(function(){
+    .then(function(d){
       document.getElementById('nuEmail').value='';document.getElementById('nuPass').value='';
       flash(mode==='invite'?('Invitación enviada a '+em):('Usuario '+em+' creado'),true);
+      try{ sbRpc('suite_audit_write',{p_action:(mode==='invite'?'user_invite':'user_create'),p_app:'suite',p_target:(d&&d.id)||null,p_target_email:em,p_after:(mode==='invite'?'invitado':'creado')}); }catch(e){}
       setTimeout(loadUsers,800);
     })
     .catch(function(e){
