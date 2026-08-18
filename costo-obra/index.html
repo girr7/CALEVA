@@ -726,7 +726,7 @@ function router(url,method,body){
   if(url==='/api/import/csv'&&method==='POST'){ needWrite(); return importCsvRows(body.text); }
   if(url==='/api/import/xlsx'&&method==='POST'){ needWrite();
     return xlsxToRows(body.base64).then(function(res){ var rows=res.rows,hi=headerRow(rows),header=rows[hi]||[];
-      var ci=hdrIndex(header,['codigo','código','code']), di=hdrIndex(header,['descrip','material','partida','item','concepto']), qi=hdrIndex(header,['cantidad','cant','qty','quantity']);
+      var ci=hdrIndex(header,['codigo','código','code']), di=hdrIndex(header,['descrip','material','partida','concepto','item']), qi=hdrIndex(header,['cantidad','cant','qty','quantity']);
       var pi=hdrIndex(header,['precio','unitario','p.u','costo unit','valor unit']), si=hdrIndex(header,['proveedor','provee']), cui=hdrIndex(header,['moneda','currency']), tai=hdrIndex(header,['tasa','rate']);
       if(di<0||qi<0)throw Error('No se detectaron columnas de descripción y cantidad en el Excel.');
       return sbGet('obra_projects?code=eq.'+encodeURIComponent(body.project_code)+'&select=id').then(function(pr){
@@ -803,8 +803,11 @@ async function xlsxToRows(base64){ var bin=atob(base64),bytes=new Uint8Array(bin
   var sx=firstSheet(files); if(!sx)throw Error('No se encontró una hoja de datos en el Excel.');
   return {sheetName:sheetName, rows:sheetRows(sx,ss)}; }
 function xdate(v){ v=String(v==null?'':v).trim(); if(/^\d{4}-\d{2}-\d{2}/.test(v))return v.slice(0,10); var n=parseFloat(v.replace(',','.')); if(isFinite(n)&&n>20000&&n<80000){var d=new Date(Date.UTC(1899,11,30)+Math.round(n)*86400000);return d.toISOString().slice(0,10);} return v||null; }
-function hdrIndex(header,names){ for(var i=0;i<header.length;i++)for(var j=0;j<names.length;j++)if(String(header[i]||'').toLowerCase().indexOf(names[j])>=0)return i; return -1; }
-function headerRow(rows){ var hi=0; while(hi<rows.length && !((rows[hi]||[]).join('').trim()))hi++; return hi; }
+function hdrIndex(header,names){ for(var j=0;j<names.length;j++)for(var i=0;i<header.length;i++)if(String(header[i]||'').toLowerCase().indexOf(names[j])>=0)return i; return -1; }
+function headerRow(rows){ var qn=['cantidad','cant','qty','quantity'], dn=['descrip','material','partida','concepto','item'];
+  function has(row,names){ if(!row)return false; for(var i=0;i<row.length;i++){ var c=String(row[i]||'').toLowerCase(); for(var j=0;j<names.length;j++) if(c.indexOf(names[j])>=0) return true; } return false; }
+  for(var r=0;r<rows.length;r++){ if(has(rows[r],dn)&&has(rows[r],qn)) return r; }
+  var hi=0; while(hi<rows.length && !((rows[hi]||[]).join('').trim()))hi++; return hi; }
 
 /* ---------------- Reemplazo de api() ---------------- */
 window.api=function(url,opt){
