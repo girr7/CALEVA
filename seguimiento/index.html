@@ -1876,6 +1876,107 @@ UI.boot();
 })();
 </script>
 <script>
+/* ===== Caleva Suite · Sincronizar HES desde correo (parseo + cruce) ===== */
+(function(){ 'use strict';
+  if(typeof Store==='undefined')return;
+  function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+  function norm(s){ return String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,' ').trim(); }
+  function sim(a,b){ a=norm(a); b=norm(b); if(!a||!b)return 0; var ta=a.split(' ').filter(function(w){return w.length>=3;}), tb=b.split(' ').filter(function(w){return w.length>=3;}); if(!ta.length||!tb.length)return 0; var sb={}; tb.forEach(function(w){sb[w]=1;}); var inter=0; ta.forEach(function(w){ if(sb[w])inter++; }); return inter/Math.min(ta.length,tb.length); }
+  function today(){ var d=new Date(),z=function(n){return (n<10?'0':'')+n;}; return d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate()); }
+  /* Extrae de un texto (uno o varios correos) los HES emitidos */
+  function parseEmails(txt){ var out=[]; var re=/HES\s+(\d{5,})[\s\S]*?concepto de\s+([\s\S]*?)\s+la cual est[aá]\s+asociada al\s+pedido\s+(\d{5,})/gi; var m;
+    while((m=re.exec(txt))){ var block=txt.slice(Math.max(0,m.index-10), re.lastIndex+40); var mo=/USD\s*\$?\s*([\d.,]+)/i.exec(block); var fe=/(\d{2}[\/\-]\d{2}[\/\-]\d{4}|\d{4}-\d{2}-\d{2})/.exec(block);
+      out.push({hes:m[1], desc:m[2].replace(/\s+/g,' ').trim(), pedido:m[3], monto:mo?mo[1]:'', fecha:fe?fe[1]:''}); }
+    return out; }
+  function pending(){ return Store.data.valuaciones.map(function(v,i){return {v:v,i:i};}).filter(function(o){ return !String(o.v.hes||'').trim(); }); }
+  function match(rec, used){ var cand=pending().filter(function(o){ return String((typeof pedNum==='function'?pedNum(o.v.pedido):o.v.pedido))===String(rec.pedido) && !used[o.i]; });
+    if(!cand.length)return null; var best=null,bs=-1; cand.forEach(function(o){ var pp=(typeof pedidoPorNum==='function')?pedidoPorNum(o.v.pedido):null; var s=sim(rec.desc,(o.v.desc||'')+' '+(o.v.estacion||'')+' '+(pp&&pp.desc||'')); if(s>bs){bs=s;best=o;} }); return {o:best,score:bs}; }
+  function toDate(f){ if(!f)return today(); f=String(f); if(/^\d{4}-\d{2}-\d{2}/.test(f))return f.slice(0,10); var m=/(\d{2})[\/\-](\d{2})[\/\-](\d{4})/.exec(f); if(m)return m[3]+'-'+m[2]+'-'+m[1]; var d=new Date(f); if(!isNaN(d)){ var z=function(n){return (n<10?'0':'')+n;}; return d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate()); } return today(); }
+  function apply(recs){ var used={}, res=[];
+    recs.forEach(function(r){ var mt=match(r,used); if(mt&&mt.o){ used[mt.o.i]=1; res.push({rec:r,idx:mt.o.i,est:mt.o.v.estacion,val:mt.o.v.val,score:mt.score}); } else res.push({rec:r,idx:null}); });
+    // asegurar que la tabla muestre TODOS los pendientes (quitar filtro por pedido)
+    var selPed=document.getElementById('hesPed'); if(selPed){ selPed.value=''; } if(typeof Hes!=='undefined'&&Hes.render)Hes.render();
+    var applied=0;
+    res.forEach(function(x){ if(x.idx==null)return; var tr=document.querySelector('#tab-hes tr[data-idx="'+x.idx+'"]'); if(!tr)return; var h=tr.querySelector('.hHes'),f=tr.querySelector('.hFecha'),d=tr.querySelector('.hDesc'); if(h)h.value=x.rec.hes; if(f)f.value=toDate(x.rec.fecha); if(d&&x.rec.desc)d.value=x.rec.desc; tr.style.background='#e6fbf3'; applied++; });
+    return {res:res,applied:applied}; }
+  function renderSyncResult(recs,r){ var out=document.getElementById('hesSyncOut'); if(!out)return;
+    var rowsH=r.res.map(function(x){ var ok=x.idx!=null; var conf=ok?(x.score>=0.5?'alta':(x.score>0?'media':'baja')):'—';
+      return '<tr><td>'+esc(x.rec.hes)+'</td><td>'+esc(x.rec.pedido)+'</td><td style="font-size:11px">'+esc(x.rec.desc)+'</td><td>'+(ok?('✓ '+esc(x.est||'')+' / '+esc(x.val||'')):'<span style="color:#e11d48">sin coincidencia</span>')+'</td><td class="center">'+conf+'</td></tr>'; }).join('');
+    out.innerHTML='<div style="font-size:12.5px;color:#1b2a63;font-weight:700;margin-bottom:6px">'+r.applied+' de '+recs.length+' HES pre-cargadas en la tabla. Revisa y pulsa «Guardar HES».</div><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="color:#41527a;text-align:left"><th style="padding:5px 7px">HES</th><th>Pedido</th><th>Descripción</th><th>Valuación</th><th class="center">Confianza</th></tr></thead><tbody>'+rowsH+'</tbody></table><p style="font-size:11px;color:#6b7794;margin-top:8px">Las verdes se aplicaron a su fila. Las «sin coincidencia» quedan para revisión manual (quizá el pedido no tiene valuación pendiente o ya tiene HES).</p>'; }
+  function fetchFromEmail(){ var out=document.getElementById('hesSyncOut'); var u=(document.getElementById('hesImapUser')||{}).value; u=(u||'').trim(); var p=(document.getElementById('hesImapPass')||{}).value||''; var since=(document.getElementById('hesImapSince')||{}).value||'';
+    if(!u||!p){ out.innerHTML='<div style="color:#e11d48;font-size:12.5px">Ingresa correo y contraseña del buzón.</div>'; return; }
+    try{ localStorage.setItem('hesImapUser',u); }catch(e){}
+    var btn=document.getElementById('hesImapGo'); var ot=btn.textContent; btn.disabled=true; btn.textContent='Conectando…'; out.innerHTML='<div style="font-size:12.5px;color:#516089">Consultando el correo (mail.name.com)…</div>';
+    var url=SB.url.replace(/\/+$/,'')+'/functions/v1/hes-imap';
+    fetch(url,{method:'POST',headers:{'apikey':SB.key,'Authorization':'Bearer '+((typeof Auth!=='undefined'&&Auth.token())||SB.key),'Content-Type':'application/json'},body:JSON.stringify({email:u,password:p,since:since||null})})
+      .then(function(r){return r.text().then(function(t){var d=null;try{d=t?JSON.parse(t):null;}catch(e){} if(!r.ok)throw Error((d&&d.error)||('HTTP '+r.status)); return d;});})
+      .then(function(d){ var msgs=(d&&d.messages)||[]; if(!msgs.length){ out.innerHTML='<div style="font-size:12.5px;color:#516089">No se encontraron correos de HES del remitente en el período seleccionado.</div>'; return; }
+        var recs=[],full=''; msgs.forEach(function(mm){ var t=mm.text||''; full+=t+'\n\n'; var rs=parseEmails(t); rs.forEach(function(rec){ if(mm.date)rec.fecha=mm.date; }); recs=recs.concat(rs); });
+        var ta=document.getElementById('hesSyncTxt'); if(ta)ta.value=full;
+        var r=apply(recs); renderSyncResult(recs,r); })
+      .catch(function(e){ var m=e.message||''; if(/404|not found|failed to fetch/i.test(m))m='Falta desplegar la Edge Function hes-imap en Supabase.'; out.innerHTML='<div style="color:#e11d48;font-size:12.5px">Error: '+esc(m)+'</div>'; })
+      .then(function(){ btn.disabled=false; btn.textContent=ot; }); }
+  function openSync(){ var ov=document.getElementById('hesSyncOv'); if(!ov){ ov=document.createElement('div'); ov.id='hesSyncOv'; ov.style.cssText='position:fixed;inset:0;background:rgba(11,18,40,.5);z-index:600;display:flex;align-items:flex-start;justify-content:center;padding:26px;overflow:auto';
+      var savedU=''; try{ savedU=localStorage.getItem('hesImapUser')||''; }catch(e){}
+      ov.innerHTML='<div role="dialog" aria-label="Sincronizar HES por correo" style="background:#fff;max-width:820px;width:100%;border-radius:14px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.35)"><div style="display:flex;align-items:center;gap:10px;padding:14px 18px;background:linear-gradient(120deg,#0b1228,#16204a);color:#fff"><b style="flex:1;font-size:15px">Sincronizar HES desde correo</b><button id="hesSyncX" aria-label="Cerrar" style="background:rgba(255,255,255,.15);border:0;color:#fff;width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:16px">×</button></div><div style="padding:16px 18px">'
+        +'<div style="border:1px solid #e6ecf7;border-radius:10px;padding:12px;margin-bottom:12px"><div style="font-weight:700;color:#1b2a63;font-size:13px;margin-bottom:8px">Traer del correo corporativo (IMAP)</div><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><input id="hesImapUser" type="email" placeholder="correo@corpcaleva.com" value="'+esc(savedU)+'" style="flex:1;min-width:200px;border:1px solid #d5deee;border-radius:8px;padding:8px 10px;font-size:13px"><input id="hesImapPass" type="password" placeholder="contraseña" autocomplete="off" style="min-width:150px;border:1px solid #d5deee;border-radius:8px;padding:8px 10px;font-size:13px"><input id="hesImapSince" type="date" title="Desde (opcional)" style="border:1px solid #d5deee;border-radius:8px;padding:8px 10px;font-size:13px"><button id="hesImapGo" style="background:#3b5bfd;color:#fff;border:0;border-radius:9px;padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer">Traer y cruzar</button></div><div style="font-size:10.5px;color:#6b7794;margin-top:6px">Servidor mail.name.com:993 (SSL). Busca correos de no_reply@telefonica.com.ve. Tu clave se usa solo para esta consulta y <b>no se guarda</b>.</div></div>'
+        +'<div style="text-align:center;color:#94a3b8;font-size:11px;margin:4px 0 8px">— o pega el/los correos manualmente —</div>'
+        +'<textarea id="hesSyncTxt" placeholder="Pega el/los correos aquí…" style="width:100%;height:130px;border:1px solid #d5deee;border-radius:9px;padding:10px;font-size:12.5px;font-family:inherit;box-sizing:border-box"></textarea><div style="display:flex;gap:10px;margin-top:10px"><button id="hesSyncGo" style="background:#64748b;color:#fff;border:0;border-radius:9px;padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer">Procesar texto pegado</button></div><div id="hesSyncOut" style="margin-top:12px"></div></div></div>';
+      document.body.appendChild(ov); ov.addEventListener('click',function(e){if(e.target===ov)ov.remove();}); document.getElementById('hesSyncX').onclick=function(){ov.remove();};
+      document.getElementById('hesImapGo').onclick=fetchFromEmail;
+      document.getElementById('hesSyncGo').onclick=function(){ var txt=(document.getElementById('hesSyncTxt')||{}).value||''; var recs=parseEmails(txt); var out=document.getElementById('hesSyncOut'); if(!recs.length){ out.innerHTML='<div style="color:#e11d48;font-size:12.5px">No se detectó ningún HES en el texto.</div>'; return; } var r=apply(recs); renderSyncResult(recs,r); };
+    }
+    var t=document.getElementById('hesSyncTxt'); if(t)t.value=''; var o=document.getElementById('hesSyncOut'); if(o)o.innerHTML=''; }
+  window.__hesSyncOpen=openSync;
+  function injectBtn(){ var tab=document.getElementById('tab-hes'); if(!tab)return; var tb=tab.querySelector('.toolbar'); if(!tb||tb.querySelector('.hesSyncBtn'))return; var b=document.createElement('button'); b.className='btn gr hesSyncBtn'; b.type='button'; b.innerHTML='✉ Sincronizar HES por correo'; b.onclick=openSync; tb.insertBefore(b, tb.firstChild); }
+  var tries=0; var iv=setInterval(function(){ tries++; if(tries>90){clearInterval(iv);} var tab=document.getElementById('tab-hes'); if(tab){ injectBtn(); if(!tab.__hesObs){ tab.__hesObs=new MutationObserver(function(){ injectBtn(); }); tab.__hesObs.observe(tab,{childList:true,subtree:true}); } } },1200);
+})();
+</script>
+<script>
+/* ===== Caleva Suite · Reporte de facturación mensual (impuesto municipal) ===== */
+(function(){ 'use strict';
+  if(typeof Store==='undefined')return;
+  var MES=['','Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+  function m(n){ try{ if(typeof money==='function')return money(n); }catch(e){} return 'USD '+Number(n||0).toLocaleString('es-VE',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+  function years(){ var F=(Store.data&&Store.data.facturas)||[],ys={}; F.forEach(function(f){ var y=+f.anio||(f.fecha?+String(f.fecha).slice(0,4):0); if(y)ys[y]=1; }); return Object.keys(ys).sort().reverse(); }
+  function group(yearFilter){ var F=(Store.data&&Store.data.facturas)||[],g={};
+    F.forEach(function(f){ if((f.status||'').toLowerCase()==='anulada')return;
+      var y=+f.anio||(f.fecha?+String(f.fecha).slice(0,4):0), mo=+f.mes||(f.fecha?+String(f.fecha).slice(5,7):0); if(!y||!mo)return;
+      if(yearFilter&&String(y)!==String(yearFilter))return;
+      var k=y+'-'+(mo<10?'0':'')+mo; if(!g[k])g[k]={y:y,mo:mo,n:0,base:0,iva:0,total:0,cob:0};
+      g[k].n++; g[k].base+=(+f.base||0); g[k].iva+=(+f.iva||0); g[k].total+=(+f.total||0); g[k].cob+=(+f.pagos||0); });
+    return Object.keys(g).sort().map(function(k){return g[k];}); }
+  function render(){ var yf=(document.getElementById('facRepYear')||{}).value||''; var al=parseFloat((document.getElementById('facRepAlic')||{}).value)||0;
+    var rows=group(yf); var host=document.getElementById('facRepBody'); if(!host)return;
+    var T={n:0,base:0,iva:0,total:0,cob:0,imp:0};
+    var body=rows.map(function(r){ var imp=r.base*al/100; T.n+=r.n;T.base+=r.base;T.iva+=r.iva;T.total+=r.total;T.cob+=r.cob;T.imp+=imp;
+      return '<tr><td>'+MES[r.mo]+' '+r.y+'</td><td style="text-align:center">'+r.n+'</td><td style="text-align:right">'+m(r.base)+'</td><td style="text-align:right">'+m(r.iva)+'</td><td style="text-align:right">'+m(r.total)+'</td><td style="text-align:right">'+m(r.cob)+'</td>'+(al>0?'<td style="text-align:right;color:#b42318;font-weight:700">'+m(imp)+'</td>':'')+'</tr>'; }).join('')||'<tr><td colspan="'+(al>0?7:6)+'" style="padding:12px;color:#7688ac">Sin facturas en el período.</td></tr>';
+    var foot='<tr style="font-weight:800;background:#f4f7fd"><td>TOTAL</td><td style="text-align:center">'+T.n+'</td><td style="text-align:right">'+m(T.base)+'</td><td style="text-align:right">'+m(T.iva)+'</td><td style="text-align:right">'+m(T.total)+'</td><td style="text-align:right">'+m(T.cob)+'</td>'+(al>0?'<td style="text-align:right;color:#b42318">'+m(T.imp)+'</td>':'')+'</tr>';
+    host.innerHTML='<table class="frTbl"><thead><tr><th>Mes</th><th style="text-align:center">Facturas</th><th style="text-align:right">Base imponible</th><th style="text-align:right">IVA</th><th style="text-align:right">Total</th><th style="text-align:right">Cobrado</th>'+(al>0?'<th style="text-align:right">Impuesto ('+al+'%)</th>':'')+'</tr></thead><tbody>'+body+foot+'</tbody></table>';
+    window.__facRepXls=function(){ var yfLbl=(document.getElementById('facRepYear')||{}).value||'Todos'; var cols=al>0?7:6;
+      var logo=''; try{ var im=document.querySelector('img[src^="data:image"]'); if(im)logo=im.src; }catch(e){}
+      var TH=function(t){return '<th style="background:#1b2a63;color:#fff;padding:6px 8px;border:1px solid #2c3f70;font-weight:bold">'+t+'</th>';};
+      var NF=function(x){return '<td style="mso-number-format:\'#,##0.00\';border:1px solid #dfe6f2;text-align:right;padding:5px 8px">'+Number(x||0).toFixed(2)+'</td>';};
+      var thead=TH('Mes')+TH('Facturas')+TH('Base imponible')+TH('IVA')+TH('Total')+TH('Cobrado')+(al>0?TH('Impuesto '+al+'%'):'');
+      var trs=rows.map(function(r,i){ var bg=i%2?'#f4f7fd':'#ffffff'; return '<tr style="background:'+bg+'"><td style="border:1px solid #dfe6f2;padding:5px 8px">'+MES[r.mo]+' '+r.y+'</td><td style="border:1px solid #dfe6f2;text-align:center;padding:5px 8px">'+r.n+'</td>'+NF(r.base)+NF(r.iva)+NF(r.total)+NF(r.cob)+(al>0?NF(r.base*al/100):'')+'</tr>'; }).join('');
+      var totr='<tr style="background:#e9eef9;font-weight:bold"><td style="border:1px solid #dfe6f2;padding:5px 8px">TOTAL</td><td style="border:1px solid #dfe6f2;text-align:center;padding:5px 8px">'+T.n+'</td>'+NF(T.base)+NF(T.iva)+NF(T.total)+NF(T.cob)+(al>0?NF(T.imp):'')+'</tr>';
+      var band='<tr><td colspan="'+cols+'" style="padding:12px;background:#0b1228;color:#ffffff">'+(logo?'<img src="'+logo+'" width="120" height="48" style="float:left;margin-right:14px">':'')+'<span style="font-size:18pt;font-weight:bold;color:#ffffff">CORPORACIÓN CALEVA, C.A.</span><br><span style="font-size:10pt;color:#cfe0ff">RIF: J-40612095-2</span></td></tr>';
+      var title='<tr><td colspan="'+cols+'" style="padding:8px 12px;background:#3b5bfd;color:#ffffff;font-size:13pt;font-weight:bold">Relación de Facturación por Mes'+(yfLbl&&yfLbl!=='Todos'?' &middot; '+yfLbl:'')+'</td></tr>';
+      var sub='<tr><td colspan="'+cols+'" style="padding:4px 12px;font-size:8pt;color:#555">Generado: '+new Date().toLocaleString()+(al>0?' &middot; Alícuota municipal: '+al+'%':'')+' &middot; Excluye facturas anuladas</td></tr>';
+      var doc='<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"><!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>Facturacion</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]--></head><body><table border="0" cellspacing="0" cellpadding="0" style="font-family:Calibri,Arial,sans-serif;font-size:10pt">'+band+title+sub+'<tr><td colspan="'+cols+'" style="height:6px"></td></tr><tr>'+thead+'</tr>'+trs+totr+'</table></body></html>';
+      var blob=new Blob(['﻿'+doc],{type:'application/vnd.ms-excel;charset=utf-8'}); var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='Facturacion_mensual_'+yfLbl+'.xls'; document.body.appendChild(a); a.click(); a.remove(); }; }
+  window.__facRepOpen=function(){ var ov=document.getElementById('facRepOv'); if(!ov){ ov=document.createElement('div'); ov.id='facRepOv'; ov.style.cssText='position:fixed;inset:0;background:rgba(11,18,40,.5);z-index:600;display:flex;align-items:flex-start;justify-content:center;padding:26px;overflow:auto';
+    var ys=years(); var yopts='<option value="">Todos los años</option>'+ys.map(function(y){return '<option value="'+y+'">'+y+'</option>';}).join('');
+    ov.innerHTML='<div role="dialog" aria-label="Reporte de facturación mensual" style="background:#fff;max-width:820px;width:100%;border-radius:14px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.35)"><div style="display:flex;align-items:center;gap:10px;padding:14px 18px;background:linear-gradient(120deg,#0b1228,#16204a);color:#fff"><b style="flex:1;font-size:15px">Facturación por mes · Relación para alcaldía</b><button id="facRepX" aria-label="Cerrar" style="background:rgba(255,255,255,.15);border:0;color:#fff;width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:16px">×</button></div><div style="padding:16px 18px"><div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px"><div><label style="font-size:11px;color:#516089;font-weight:700;display:block">Año</label><select id="facRepYear" style="border:1px solid #d5deee;border-radius:8px;padding:7px 10px;font-size:13px">'+yopts+'</select></div><div><label style="font-size:11px;color:#516089;font-weight:700;display:block">Alícuota municipal (%)</label><input id="facRepAlic" type="number" step="0.01" min="0" placeholder="opcional" style="border:1px solid #d5deee;border-radius:8px;padding:7px 10px;font-size:13px;width:130px"></div><span style="flex:1"></span><button onclick="window.__facRepXls&&window.__facRepXls()" style="background:#0a8f5b;color:#fff;border:0;border-radius:9px;padding:9px 14px;font-size:12.5px;font-weight:700;cursor:pointer">↓ Descargar Excel</button></div><div id="facRepBody" style="max-height:64vh;overflow:auto"></div><p style="font-size:11px;color:#6b7794;margin-top:8px">Excluye facturas anuladas. La <b>base imponible</b> (ingresos brutos) es la referencia habitual del impuesto de actividad económica; ingresa tu <b>alícuota</b> para estimar el impuesto por mes.</p></div></div>';
+    document.body.appendChild(ov); ov.addEventListener('click',function(e){if(e.target===ov)ov.remove();}); document.getElementById('facRepX').onclick=function(){ov.remove();}; document.getElementById('facRepYear').onchange=render; document.getElementById('facRepAlic').oninput=render; }
+    render(); }
+  if(!document.getElementById('facRepCss')){ var st=document.createElement('style'); st.id='facRepCss'; st.textContent='#facRepOv .frTbl{width:100%;border-collapse:collapse;font-size:12.5px}#facRepOv .frTbl th{background:#eef2fb;color:#41527a;padding:7px 9px;position:sticky;top:0;font-size:11px}#facRepOv .frTbl td{padding:6px 9px;border-bottom:1px solid #f1f4f9}#facRepOv .frTbl tbody tr:hover td{background:#fafbff}'; document.head.appendChild(st); }
+  function injectBtn(){ var tab=document.getElementById('tab-facturas'); if(!tab)return; var tb=tab.querySelector('.toolbar'); if(!tb||tb.querySelector('.facMesBtn'))return; var b=document.createElement('button'); b.className='btn gr facMesBtn'; b.innerHTML='📅 Reporte mensual'; b.onclick=window.__facRepOpen; tb.appendChild(b); }
+  var tries=0; var iv=setInterval(function(){ tries++; if(tries>60){clearInterval(iv);} var tab=document.getElementById('tab-facturas'); if(tab){ injectBtn(); if(!tab.__facObs){ tab.__facObs=new MutationObserver(function(){ injectBtn(); }); tab.__facObs.observe(tab,{childList:true,subtree:true}); } } },1200);
+})();
+</script>
+<script>
 /* ===== Caleva Suite · Respaldo/Restauración + accesibilidad (Fase 6) ===== */
 (function(){ 'use strict';
   if(typeof Store==='undefined'||typeof Auth==='undefined')return;
