@@ -810,8 +810,8 @@ function headerRow(rows){ var qn=['cantidad','cant','qty','quantity'], dn=['desc
   var hi=0; while(hi<rows.length && !((rows[hi]||[]).join('').trim()))hi++; return hi; }
 
 /* ---------------- Reemplazo de api() ---------------- */
-window.api=function(url,opt){
-  opt=opt||{}; var method=opt.method||'GET'; var body={}; if(opt.body){try{body=JSON.parse(opt.body);}catch(e){}}
+window.api=function(url,opt,maybeBody){
+  var method,body; if(typeof opt==='string'){ method=opt; body=(maybeBody&&typeof maybeBody==='object')?maybeBody:{}; } else { opt=opt||{}; method=opt.method||'GET'; body={}; if(opt.body){try{body=JSON.parse(opt.body);}catch(e){}} }
   if(!(Auth.session)||Auth.expired()){ showLogin(); if(method==='GET')return Promise.resolve(Array.isArray(EMPTY[url])?[]:{}); return Promise.reject(Error('Inicie sesión')); }
   if(method!=='GET'&&!Auth.tieneAcceso()){ return Promise.reject(Error('Sin acceso a Control de Obras.')); }
   try{ var out=router(url,method,body); return Promise.resolve(out).then(function(res){ if(url==='/api/dashboard'&&Array.isArray(res)&&typeof normalizeFinancialProject==='function')res.forEach(normalizeFinancialProject); else if(/^\/api\/projects\/\d+$/.test(url)&&typeof normalizeFinancialProject==='function')normalizeFinancialProject(res); return res; })
@@ -1122,7 +1122,7 @@ function fillPedLines(){ if(!document.querySelector('.ped-line'))return; loadPed
   if(mt&&mh){ mh.textContent=mh.textContent.replace(/\s*\(\d+\)\s*$/,'').trim()+' ('+realRows(mt)+')'; }
   if(et&&eh){ eh.textContent=eh.textContent.replace(/\s*\(\d+\)\s*$/,'').trim()+' ('+realRows(et)+')'; }
   if(ep){ var _bar=ep.querySelector('.table-section-heading')||ep.querySelector('.panel-heading'); if(_bar){ _bar.classList.add('obra-head-row'); if(!_bar.querySelector('.nuevo-gasto-btn')){ var _ng=document.createElement('button'); _ng.className='primary nuevo-gasto-btn'; _ng.innerHTML='+ Nuevo gasto'; _ng.onclick=function(){nuevoGastoObra(id);}; var _imp=_bar.querySelector('.expense-import-button'); if(_imp)_bar.insertBefore(_ng,_imp); else _bar.appendChild(_ng); } } }
-  ensureDetailExport(id); renderExcepciones(id); attachTableSearch(ep, et, 'Buscar gasto…'); attachTableSearch(mp, mt, 'Buscar material…'); pedidoSelect(document.querySelector('#pOrder')); }catch(e){} }; })();
+  ensureDetailExport(id); renderExcepciones(id); ensureDetailEvidence(id); attachTableSearch(ep, et, 'Buscar gasto…'); attachTableSearch(mp, mt, 'Buscar material…'); pedidoSelect(document.querySelector('#pOrder')); }catch(e){} }; })();
 function initTasks(){ tasksCss(); ensureCloudDot(); pingCloud(); if(!window._obraPing){ window._obraPing=setInterval(pingCloud,45000); } }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',initTasks); else initTasks();
 
@@ -1172,9 +1172,35 @@ function clearGastoForm(){ try{ ['#mSupplier','#mAmount','#mDescription'].forEac
 /* Botón "Ver evidencia" en la cola de Validación */
 function ensureEvidenceButtons(){ var cards=document.querySelectorAll('#review [data-id]'); if(!cards.length)return; var byId={}; ((window.state&&state.candidates)||[]).forEach(function(c){ byId[c.id]=c; });
   cards.forEach(function(card){ var id=card.getAttribute('data-id'); var c=byId[id]; if(!c)return;
-    card.querySelectorAll('img[src*="/evidence"]').forEach(function(im){ im.remove(); });
-    if(card.querySelector('.ev-view'))return; if(!c.evidence_path)return;
-    var acts=card.querySelector('.actions')||card; var b=document.createElement('button'); b.type='button'; b.className='ev-view'; b.textContent='📎 Ver evidencia'; b.onclick=function(){ obraVerEvidencia(id,c.evidence_path); }; acts.appendChild(b); }); }
+    /* quitar la imagen rota del backend viejo (/api/.../evidence) */
+    card.querySelectorAll('img[src*="/evidence"],img[src^="/api/"]').forEach(function(im){ im.remove(); });
+    if(card.dataset.evDone==='1')return; card.dataset.evDone='1';
+    if(!c.evidence_path){ return; }
+    var box=card.querySelector('.evidence')||card;
+    var acts=card.querySelector('.actions')||card;
+    if(!card.querySelector('.ev-view')){ var b=document.createElement('button'); b.type='button'; b.className='ev-view'; b.textContent='📎 Ver evidencia'; b.onclick=function(){ obraVerEvidencia(id,c.evidence_path); }; acts.appendChild(b); }
+    var isPdf=/\.pdf$/i.test(c.evidence_path||'');
+    evSignedUrl(c.evidence_path).then(function(u){ if(!u){ card.dataset.evDone=''; return; }
+      if(box.querySelector('.ev-prev'))return;
+      if(isPdf){ var a=document.createElement('a'); a.className='ev-prev'; a.href=u; a.target='_blank'; a.rel='noopener'; a.textContent='📄 Abrir comprobante (PDF)'; a.style.cssText='display:inline-block;margin-bottom:6px;font-weight:600;color:#3b5bfd;text-decoration:none'; box.insertBefore(a, box.firstChild); }
+      else { var im=document.createElement('img'); im.className='ev-prev'; im.src=u; im.alt='Evidencia'; im.loading='lazy'; im.title='Clic para ampliar'; im.style.cssText='display:block;max-width:100%;max-height:200px;border-radius:8px;cursor:zoom-in;object-fit:contain;background:#f3f6fc'; im.onclick=function(){ window.open(u,'_blank','noopener'); }; box.insertBefore(im, box.firstChild); }
+    }).catch(function(){ card.dataset.evDone=''; }); }); }
+
+/* "Ver evidencia" también en el DETALLE del centro de costo (filas de gasto) */
+function ensureDetailEvidence(id){ try{
+  var et=document.querySelector('#detail .expense-table'); if(!et)return;
+  window.api('/api/projects/'+id).then(function(p){
+    var exps=(p&&p.expenses)||[];
+    var rows=Array.prototype.filter.call(et.querySelectorAll('tbody tr'),function(tr){return !tr.querySelector('td[colspan]');});
+    if(!rows.length||rows.length!==exps.length)return; /* si el mapeo no cuadra, no arriesgar */
+    rows.forEach(function(tr,i){ var e=exps[i]; if(!e)return; var old=tr.querySelector('.ev-view-d'); if(old)old.remove();
+      if(!e.evidence_path)return; var last=tr.cells[tr.cells.length-1]; if(!last)return;
+      var b=document.createElement('button'); b.type='button'; b.className='ev-view-d'; b.title='Ver evidencia (comprobante)'; b.textContent='📎';
+      b.style.cssText='margin-left:8px;border:0;background:transparent;cursor:pointer;font-size:14px;line-height:1';
+      b.onclick=function(ev){ ev.stopPropagation(); obraVerEvidencia(e.id,e.evidence_path); }; last.appendChild(b);
+    });
+  }).catch(function(){});
+}catch(e){} }
 
 /* REPORTES (Excel) */
 function c2n(c){ return Math.round(c||0)/100; }

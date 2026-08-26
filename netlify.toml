@@ -1,10 +1,42 @@
 [[headers]]
   for = "/*"
   [headers.values]
-    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://pcuxjtfptktqnztxftwa.supabase.co https://ve.dolarapi.com; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://pcuxjtfptktqnztxftwa.supabase.co; connect-src 'self' https://pcuxjtfptktqnztxftwa.supabase.co https://ve.dolarapi.com; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
     X-Frame-Options = "DENY"
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "no-referrer"
     Permissions-Policy = "geolocation=(), microphone=(), camera=(), payment=(), usb=()"
     Strict-Transport-Security = "max-age=31536000; includeSubDomains"
     Cross-Origin-Opener-Policy = "same-origin"
+
+# ── Carpetas internas (papeles de trabajo, fuentes, backups): no servir públicamente ──
+[[redirects]]
+  from = "/_papeles_trabajo/*"
+  to = "/404.html"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/_revisar/*"
+  to = "/404.html"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/_obra_src/*"
+  to = "/404.html"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/graphify-out/*"
+  to = "/404.html"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/Bussiness%20Plan%20TMV/*"
+  to = "/404.html"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/CLAUDE.md"
+  to = "/404.html"
+  status = 404
+  force = true

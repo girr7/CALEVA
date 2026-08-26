@@ -5,84 +5,132 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Caleva Suite</title>
 <link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/png" href="/favicon.png"><link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<!-- caleva-redesign: A-tactil -->
 <style>
-:root{--navy:#1a2e4a;--navy2:#2c4a6e;--blue:#2e6da4;--cyan:#4fc3f7;--bg:#eef1f5;--card:#fff;
---line:#c5d8ec;--line2:#a9c4e0;--txt:#1a2533;--txt2:#4a6280;--txt3:#7a90a8;
---ok:#27ae60;--okbg:#e8f7ee;--accbg:#e8f0f9;--bad:#c0392b;--r:12px}
+/* ═══════════════════════════════════════════════════════════════
+   CALEVA SUITE · PORTAL — dirección «A · Táctil»
+   Puente con el módulo Seguimiento: titular en Newsreader.
+   Paleta congelada: _redesign/brand-spec.md §3
+   El panel de Usuarios (.us*) conserva sus estilos propios más abajo.
+   ═══════════════════════════════════════════════════════════════ */
+:root{
+  --navy:#141f47;--navy2:#1b2a63;--blue:#3b5bfd;--cyan:#22d3ee;--bg:#f3f5fc;
+  --line:#e4e9f7;--line2:#dde3f5;--txt:#1b2a63;--txt2:#5b6b8c;--txt3:#8a99b8;
+  --ok:#0a8f5b;--okbg:#e6fbf3;--bad:#e11d48;--badbg:#fdeaef;--accbg:#eef1ff;
+  --sh:#c9d2ee;--pad:46px;
+}
 *{box-sizing:border-box;margin:0;padding:0}
-body{font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--txt);min-height:100vh}
-.top{background:linear-gradient(135deg,var(--navy),var(--blue));color:#fff;padding:16px 26px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;box-shadow:0 2px 12px rgba(26,46,74,.25)}
-.brand{display:flex;align-items:center;gap:13px}
-.brand img{height:42px;background:#fff;padding:5px 8px;border-radius:8px;display:block}
-.brand .t b{font-size:16px;font-weight:700;display:block;line-height:1.2}
-.brand .t span{font-size:11px;color:#bcd3ea}
-.uwrap{display:none;align-items:center;gap:9px;font-size:12px}
+html,body{min-height:100%}
+body{font-family:Nunito,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  background:var(--bg);color:var(--txt);-webkit-font-smoothing:antialiased;
+  font-variant-numeric:tabular-nums}
+.serif{font-family:Newsreader,Georgia,"Times New Roman",serif}
+
+/* botón táctil: sombra dura inferior, se hunde al presionar */
+.tb{border:none;font-family:inherit;font-weight:800;cursor:pointer;border-radius:16px;
+  background:var(--blue);color:#fff;box-shadow:0 5px 0 #2440c9;padding:14px 24px;font-size:16px;
+  transition:transform .06s,box-shadow .06s}
+.tb:hover{filter:brightness(1.05)}
+.tb:active{transform:translateY(5px);box-shadow:0 0 0 #2440c9}
+.tb:disabled{opacity:.55;cursor:default;transform:none}
+.tb:focus-visible{outline:3px solid var(--cyan);outline-offset:3px}
+.tb.gh{background:#fff;color:var(--navy2);box-shadow:0 5px 0 var(--sh)}
+.tb.gh:active{box-shadow:0 0 0 var(--sh)}
+.tb.sm{padding:9px 16px;font-size:13.5px;border-radius:12px;box-shadow:0 4px 0 #2440c9}
+.tb.sm.gh{box-shadow:0 4px 0 var(--sh)}
+.tb.sm:active{transform:translateY(4px)}
+
+.top{display:flex;align-items:center;justify-content:space-between;gap:14px;
+  padding:20px var(--pad);flex-wrap:wrap}
+.brand img{height:40px;display:block}
+.uwrap{display:none;align-items:center;gap:10px;flex-wrap:wrap}
 .uwrap.on{display:flex}
-.uwrap .em{color:#dbe7f5}
-.uwrap .rol{background:#fff;color:var(--navy);padding:2px 9px;border-radius:11px;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px}
-.uwrap .rol.super{background:var(--cyan);color:var(--navy)}
-.btn{padding:7px 14px;border:1px solid var(--line2);background:#fff;color:var(--txt);border-radius:8px;cursor:pointer;font-weight:600;font-size:13px}
-.btn.ghost{background:transparent;border-color:rgba(255,255,255,.5);color:#fff}
-.btn.p{background:var(--blue);border-color:var(--blue);color:#fff}
-.wrap{max-width:920px;margin:0 auto;padding:30px 22px 50px}
-.lead{font-size:12px;color:var(--txt2);text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:16px}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:18px}
-.app{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:20px;display:flex;flex-direction:column;transition:.15s;box-shadow:0 1px 6px rgba(26,46,74,.08)}
+.who{display:flex;align-items:center;gap:11px;background:#fff;border-radius:18px;
+  padding:8px 10px 8px 18px;box-shadow:0 4px 0 var(--sh)}
+.who .em{font-size:13.5px;font-weight:800;color:var(--navy)}
+.who .rol{background:var(--accbg);color:var(--blue);font-size:11px;font-weight:900;
+  padding:5px 11px;border-radius:11px;text-transform:uppercase;letter-spacing:.6px;white-space:nowrap}
+.who .rol.super{background:var(--cyan);color:var(--navy)}
+
+.wrap{padding:14px var(--pad) 44px;max-width:1560px;margin:0 auto}
+.hi{font-size:clamp(28px,3.4vw,44px);font-weight:400;letter-spacing:-1.1px;color:var(--navy);
+  line-height:1.1;margin-bottom:8px;text-wrap:pretty}
+.lead{font-size:16px;color:var(--txt2);font-weight:600;margin-bottom:30px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:24px}
+.app{background:#fff;border-radius:28px;padding:24px 24px 22px;box-shadow:0 7px 0 var(--sh);
+  display:flex;flex-direction:column;min-height:288px;transition:transform .1s,box-shadow .1s}
 .app.able{cursor:pointer}
-.app.able:hover{border-color:var(--blue);box-shadow:0 6px 20px rgba(26,46,74,.16);transform:translateY(-2px)}
-.app.locked{opacity:.6}
-.app .hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
-.app .ic{width:44px;height:44px;border-radius:10px;background:var(--accbg);display:flex;align-items:center;justify-content:center;font-size:22px}
-.badge{font-size:10px;font-weight:700;padding:3px 9px;border-radius:7px;text-transform:uppercase;letter-spacing:.3px}
-.badge.admin{background:var(--okbg);color:#0f6e56}
-.badge.acc{background:var(--accbg);color:#185fa5}
-.badge.ro{background:#eef3f8;color:#4a6280}
-.badge.no{background:#fbeceb;color:var(--bad)}
-.app h3{font-size:15px;font-weight:700;margin-bottom:4px}
-.app p{font-size:12px;color:var(--txt3);line-height:1.5;flex:1}
-.app .go{margin-top:14px;text-align:center;font-size:13px;font-weight:700;padding:8px;border-radius:8px;background:var(--blue);color:#fff}
-.app.locked .go{background:#e3e9f0;color:#9db0c4}
-.app.soon{border-style:dashed;background:#f4f7fb;align-items:center;justify-content:center;text-align:center;min-height:172px}
-.app.soon .ic{background:#e8eef6;font-size:20px}
-.app.soon .lab{font-size:13px;font-weight:600;color:var(--txt2);margin-top:8px}
-.foot{margin-top:24px;font-size:11.5px;color:var(--txt3);display:flex;align-items:center;gap:7px}
-#loginBg{display:none;position:fixed;inset:0;background:linear-gradient(135deg,var(--navy),var(--blue));z-index:100;align-items:center;justify-content:center;padding:20px}
-#loginBg.on{display:flex}
-.lg{background:#fff;border-radius:14px;padding:30px 26px;width:min(374px,92vw);box-shadow:0 20px 60px rgba(0,0,0,.42)}
-.lg img{display:block;margin:0 auto 16px;height:46px}
-.lg h2{color:var(--navy);font-size:19px;text-align:center;margin-bottom:3px}
-.lg .sub{color:var(--txt2);font-size:12px;text-align:center;margin-bottom:20px}
-.lg label{display:block;font-size:11px;color:var(--txt2);text-transform:uppercase;font-weight:600;margin-bottom:4px;letter-spacing:.5px}
-.lg input{width:100%;padding:10px 12px;border:1px solid var(--line2);border-radius:8px;font-size:14px;margin-bottom:13px}
-.lg input:focus{outline:2px solid var(--cyan);border-color:var(--cyan)}
-.lg .msg{color:var(--bad);font-size:12px;min-height:16px;text-align:center;margin-bottom:6px}
-.lg .hint{text-align:center;margin-top:13px;font-size:11px;color:var(--txt3)}
-.spin{text-align:center;color:var(--txt3);padding:40px;font-size:13px}
+.app.able:hover{transform:translateY(-3px);box-shadow:0 10px 0 var(--sh)}
+.app.able:active{transform:translateY(7px);box-shadow:0 0 0 var(--sh)}
+.app.locked{background:#eef2fa;box-shadow:0 7px 0 #dbe3f2}
+.app.locked .ic,.app.locked h3,.app.locked p{opacity:.55}
+.app .hd{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px}
+.ic{width:64px;height:64px;border-radius:20px;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.ic svg{width:33px;height:33px}
+.badge{font-size:11px;font-weight:900;padding:6px 11px;border-radius:11px;
+  text-transform:uppercase;letter-spacing:.5px;white-space:nowrap}
+.badge.admin{background:var(--okbg);color:var(--ok)}
+.badge.acc{background:var(--accbg);color:var(--blue)}
+.badge.ro{background:#eef2fb;color:var(--txt2)}
+.badge.no{background:var(--badbg);color:var(--bad)}
+.app h3{font-size:22px;font-weight:900;letter-spacing:-.5px;margin-bottom:6px;color:var(--navy)}
+.app p{font-size:14.5px;color:var(--txt2);font-weight:600;line-height:1.5;flex:1}
+.app .go{margin-top:18px}
+/* motivo visual compartido con Seguimiento: la cadena. Sólo aparece si hay datos. */
+.chain{display:flex;align-items:center;gap:5px;margin:16px 0 7px}
+.bead{flex:1;height:10px;border-radius:6px;background:#e3e9f6}
+.chain-lb{display:flex;justify-content:space-between;gap:8px;font-size:10.5px;font-weight:800;
+  color:var(--txt3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px}
+.app.soon{background:#eef2fa;box-shadow:none;border:3px dashed #ccd6ea;
+  align-items:center;justify-content:center;text-align:center}
+.app.soon .ic{background:#e2e9f6;color:var(--txt3);font-size:28px;font-weight:900}
+.app.soon .lab{font-size:16px;font-weight:900;color:var(--txt2);margin-top:12px}
+.app.soon p{flex:none;text-align:center;font-size:13.5px;margin-top:4px}
+.spin{grid-column:1/-1;text-align:center;color:var(--txt3);padding:60px;font-size:15px;font-weight:700}
+.foot{margin-top:34px;padding-top:18px;border-top:2px solid var(--line);
+  font-size:12px;font-weight:700;color:var(--txt3)}
+
+/* ── inicio de sesión ── */
+#loginBg{display:none;position:fixed;inset:0;z-index:100;padding:24px;overflow:auto;
+  background:linear-gradient(140deg,var(--navy) 0%,var(--navy2) 55%,#2a3f8f 100%)}
+#loginBg.on{display:flex;align-items:center;justify-content:center}
+#loginBg::before{content:"";position:absolute;inset:0;
+  background:radial-gradient(760px 420px at 50% -8%,rgba(59,91,253,.34),transparent 68%)}
+.lg{position:relative;width:min(400px,100%);background:#fff;border-radius:28px;
+  padding:34px 30px 28px;box-shadow:0 10px 0 rgba(8,14,38,.42),0 34px 80px rgba(8,14,38,.42)}
+.lg img{display:block;height:46px;margin:0 auto 20px}
+.lg h2{font-family:Newsreader,Georgia,serif;font-size:27px;font-weight:400;text-align:center;
+  color:var(--navy);letter-spacing:-.4px;margin-bottom:5px}
+.lg .sub{text-align:center;font-size:14px;color:var(--txt2);font-weight:600;margin-bottom:24px}
+.lg label{display:block;font-size:11.5px;font-weight:900;color:var(--txt3);
+  text-transform:uppercase;letter-spacing:1px;margin-bottom:7px}
+.lg input{width:100%;font-family:inherit;font-size:16px;font-weight:600;color:var(--txt);
+  padding:14px 16px;border:2px solid var(--line2);border-radius:14px;background:#fafbff;
+  margin-bottom:15px;transition:.12s}
+.lg input:focus{outline:none;border-color:var(--blue);background:#fff;box-shadow:0 0 0 4px rgba(59,91,253,.14)}
+.lg .msg{min-height:20px;font-size:13px;font-weight:700;color:var(--bad);text-align:center;margin-bottom:8px}
+.lg .hint{text-align:center;font-size:12.5px;color:var(--txt3);font-weight:600;margin-top:16px;line-height:1.6}
+
+@media(max-width:720px){:root{--pad:20px} .app{min-height:0} .who .em{display:none}}
 </style>
-<style id="ds-fintech">
-:root{--navy:#141f47;--navy2:#1b2a63;--blue:#3b5bfd;--cyan:#22d3ee;--bg:#f3f5fc;
---line:#e4e9f7;--line2:#dde3f5;--txt:#1b2a63;--txt2:#5b6b8c;--txt3:#8a99b8;
---ok:#0a8f5b;--okbg:#e6fbf3;--accbg:#eef1ff;--bad:#e11d48;}
-.top{background:linear-gradient(120deg,#1b2a63,#3b5bfd 65%,#22d3ee)!important}
-.app.able:hover{border-color:#3b5bfd}
-.app .go{background:linear-gradient(120deg,#3b5bfd,#22d3ee)!important;border-radius:9px;box-shadow:0 4px 12px rgba(59,91,253,.26)}
-.app .ic{background:color-mix(in srgb,var(--hue,#3b5bfd) 15%,#fff)!important;color:var(--hue,#3b5bfd)!important}
-.app .ic svg{width:24px;height:24px;display:block}
-.app.soon .ic{background:#eef2f9!important;color:#8a99b8!important}
-.badge.admin{background:#e6fbf3;color:#0a8f5b}
-.badge.acc{background:#eef1ff;color:#3b5bfd}
-.uwrap .rol.super{background:#22d3ee;color:#141f47}
-</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400&family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
 <body>
 <header class="top">
-  <div class="brand"><img src="data:image/png;base64,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" alt="Corporación CALEVA"><div class="t"><b>Caleva Suite</b><span>Corporación Caleva · plataforma corporativa</span></div></div>
-  <div class="uwrap" id="uwrap"><span class="em" id="uEmail"></span><span class="rol" id="uRol"></span><button class="btn ghost" id="btnUsers" style="display:none" onclick="openUsers()">Usuarios</button><button class="btn ghost" onclick="logout()">Salir</button></div>
+  <div class="brand"><img src="data:image/png;base64,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" alt="Corporación CALEVA"></div>
+  <div class="uwrap" id="uwrap">
+    <div class="who"><span class="em" id="uEmail"></span><span class="rol" id="uRol"></span></div>
+    <button class="tb sm gh" id="btnUsers" style="display:none" onclick="openUsers()">Usuarios</button>
+    <button class="tb sm gh" onclick="logout()">Salir</button>
+  </div>
 </header>
 <div class="wrap">
-  <div class="lead">Selecciona una aplicación</div>
+  <h1 class="hi serif" id="hi">Caleva Suite</h1>
+  <div class="lead" id="lead">Selecciona una aplicación</div>
   <div id="grid" class="grid"><div class="spin">Cargando…</div></div>
-  <div class="foot"><span>🔒</span> Un solo inicio de sesión para toda la suite · acceso restringido por rol</div>
+  <div class="foot">Un solo inicio de sesión para toda la suite · acceso restringido por rol</div>
 </div>
 
 <style>
@@ -174,10 +222,12 @@ body{font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-seri
     <img src="data:image/png;base64,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" alt="Corporación CALEVA">
     <h2>Caleva Suite</h2>
     <div class="sub">Acceso restringido a usuarios autorizados</div>
-    <label>Correo</label><input id="lgEmail" type="email" autocomplete="username" placeholder="usuario@corpcaleva.com">
-    <label>Contraseña</label><input id="lgPass" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
+    <label for="lgEmail">Correo</label>
+    <input id="lgEmail" type="email" autocomplete="username" placeholder="usuario@corpcaleva.com">
+    <label for="lgPass">Contraseña</label>
+    <input id="lgPass" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
     <div id="lgMsg" class="msg"></div>
-    <button class="btn p" id="lgBtn" onclick="doLogin()" style="width:100%">Entrar</button>
+    <button class="tb" id="lgBtn" onclick="doLogin()" style="width:100%">Entrar</button>
     <div class="hint">Corporación CALEVA · plataforma corporativa</div>
   </div>
 </div>
@@ -259,21 +309,74 @@ function resolver(cb){
     }).catch(function(){ACCESS.seguimiento={ok:false,badge:'no',lbl:'Sin acceso'};ACCESS.nomina={ok:false,badge:'no',lbl:'Sin acceso'};ACCESS.obra={ok:false,badge:'no',lbl:'Sin acceso'};cb(false);});
 }
 function abrir(path,able){ if(able) location.href=path; }
+/* ─────────────────────────────────────────────────────────────────
+   RESUMEN — cifras de la cadena Valuación → HES → Factura → Cobro
+   que se dibujan bajo el tile de Seguimiento.
+
+   Queda en null a propósito: el launcher todavía NO tiene una fuente
+   de datos para estas cifras, y preferimos no mostrar nada antes que
+   mostrar números inventados. Para activarlo, asigna un objeto con la
+   forma  {val:Number, hes:Number, fact:Number, cobro:Number}  — por
+   ejemplo desde un RPC de Supabase que agregue la tabla caleva_estado:
+
+     fetch(rest()+'rpc/seguimiento_resumen',{method:'POST',headers:hdrs(),body:'{}'})
+       .then(function(r){return r.ok?r.json():null;})
+       .then(function(d){ if(d){RESUMEN=d; if(ACCESS.seguimiento)pintar(_sa);} });
+
+   Mientras RESUMEN sea null, el tile se dibuja sin la cadena y el
+   diseño sigue completo.
+   ───────────────────────────────────────────────────────────────── */
+var RESUMEN=null;
+var _sa=false;
+
+function saludo(){var h=new Date().getHours();return h<12?'Buenos días':(h<19?'Buenas tardes':'Buenas noches');}
+function fechaLarga(){
+  var d=new Date();
+  var dd=['domingo','lunes','martes','miércoles','jueves','viernes','sábado'][d.getDay()];
+  var mm=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'][d.getMonth()];
+  var s=dd+' '+d.getDate()+' de '+mm;
+  return s.charAt(0).toUpperCase()+s.slice(1)+' · Corporación Caleva C.A';
+}
+function cadenaHTML(key,ok){
+  /* Sin acceso al módulo no se muestran sus cifras. */
+  if(key!=='seguimiento'||!ok||!RESUMEN)return '';
+  var pasos=[['Val',RESUMEN.val,'#3b5bfd'],['HES',RESUMEN.hes,'#3b5bfd'],
+             ['Fact',RESUMEN.fact,'#3b5bfd'],['Cobro',RESUMEN.cobro,'#0a8f5b']];
+  var beads='',lbs='';
+  for(var i=0;i<pasos.length;i++){
+    beads+='<div class="bead" style="background:'+pasos[i][2]+'"></div>';
+    lbs+='<span>'+pasos[i][0]+' '+pasos[i][1]+'</span>';
+  }
+  return '<div class="chain">'+beads+'</div><div class="chain-lb">'+lbs+'</div>';
+}
+
 function pintar(sa){
+  _sa=sa;
   document.getElementById('uwrap').classList.add('on');
   document.getElementById('uEmail').textContent=email()||'';
   var rp=document.getElementById('uRol'); rp.textContent=sa?'Super-admin':'Usuario'; rp.className='rol'+(sa?' super':'');
   var bu=document.getElementById('btnUsers'); if(bu)bu.style.display=sa?'':'none';
+
+  var h=document.getElementById('hi'); if(h)h.textContent=saludo()+'.';
+  var l=document.getElementById('lead'); if(l)l.textContent=fechaLarga();
+
   var html=APPS.map(function(a){
     var ac=ACCESS[a.key]||{ok:false,badge:'no',lbl:'Sin acceso'};
-    var cls='app '+(ac.ok?'able':'locked');
-    var onclick=ac.ok?(' onclick="abrir(\''+a.path+'\','+true+')"'):'';
-    return '<div class="'+cls+'"'+onclick+'>'
-      +'<div class="hd"><div class="ic" style="--hue:'+(a.hue||'#3b5bfd')+'">'+a.icon+'</div><span class="badge '+ac.badge+'">'+ac.lbl+'</span></div>'
+    var hue=a.hue||'#3b5bfd';
+    var sombra=hue==='#0a8f5b'?'#076e46':(hue==='#f59e0b'?'#c07c07':'#2440c9');
+    var btn=ac.ok
+      ? '<button class="tb" style="width:100%;background:'+hue+';box-shadow:0 5px 0 '+sombra+'">Entrar</button>'
+      : '<button class="tb" disabled style="width:100%;background:#dbe3f2;color:#9aa8c2;box-shadow:0 5px 0 #ccd6ea">Sin acceso</button>';
+    var onclick=ac.ok?(' onclick="abrir(\''+a.path+'\',true)"'):'';
+    return '<div class="app '+(ac.ok?'able':'locked')+'"'+onclick+'>'
+      +'<div class="hd"><div class="ic" style="background:'+hue+'1f;color:'+hue+'">'+a.icon+'</div>'
+      +'<span class="badge '+ac.badge+'">'+ac.lbl+'</span></div>'
       +'<h3>'+a.name+'</h3><p>'+a.desc+'</p>'
-      +'<div class="go">'+(ac.ok?'Abrir':'Sin acceso')+'</div></div>';
+      +cadenaHTML(a.key,ac.ok)
+      +'<div class="go">'+btn+'</div></div>';
   }).join('');
-  html+='<div class="app soon"><div class="ic">＋</div><div class="lab">Próximamente</div><p style="flex:none">Nuevas apps Caleva</p></div>';
+  html+='<div class="app soon"><div class="ic">＋</div><div class="lab">Próximamente</div>'
+      +'<p>Nuevas aplicaciones Caleva</p></div>';
   document.getElementById('grid').innerHTML=html;
 }
 function showLogin(){document.getElementById('loginBg').classList.add('on');var e=document.getElementById('lgEmail');if(e)e.focus();}
