@@ -1436,7 +1436,8 @@ function saldo(pr){ return Math.max(0, (+pr.montoTotal||0) - abonado(pr)) }
 function cuotaEnPeriodo(pr, p){
   if(pr.pagos && pr.pagos[p.id]!==undefined) return +pr.pagos[p.id]||0;  // ya registrada
   if(pr.estado!=='activo') return 0;
-  if(pr.fecha && p.fechaPagoPrevista && pr.fecha > (p.fechaPagoReal||p.fechaPagoPrevista)) return 0;
+  var _ini=(pr.desde&&String(pr.desde))||pr.fecha; var _pd=(p.fechaPagoReal||p.fechaPagoPrevista);
+  if(_ini && _pd && _ini > _pd) return 0;
   if(pr.modalidad==='mensual' && p.quincena!==(pr.quincenaCobro||2)) return 0;
   const s=saldo(pr); if(s<=0) return 0;
   return Math.min(+pr.montoCuota||0, s);
@@ -2979,6 +2980,8 @@ function editPrestamo(id){
   const x=id?DB.prestamos.find(y=>y.id===id):{id:'',trabajadorId:'',fecha:hoy(),descripcion:'',
     montoTotal:0,modalidad:'quincenal',quincenaCobro:2,cuotas:6,montoCuota:0,estado:'activo',pagos:{}};
   const A=activos();
+  const _pv=(typeof per==='function')?per():null;
+  const _defDesde = x.desde || (id ? (x.fecha||'') : ((_pv&&_pv.fechaPagoPrevista)|| (typeof hoy==='function'?hoy():'')));
   modal(id?'Editar Préstamo':'Nuevo Préstamo',`
     <div class="grid g2">
       <div class="f"><label>Trabajador <span class="req">*</span></label>
@@ -2998,6 +3001,7 @@ function editPrestamo(id){
         <input id="p_cuotas" type="number" min="1" max="60" value="${x.cuotas}" oninput="calcCuota()"></div>
     </div>
     <div class="grid g3">
+      <div class="f"><label>Descontar a partir de <span class="req">*</span></label><input id="p_desde" type="date" value="${_defDesde}"><div class="hint" style="font-size:11px;color:#6b7794;margin-top:4px">Se activa y empieza a descontar desde esta quincena.</div></div>
       <div class="f" id="p_qcBox" style="display:${x.modalidad==='mensual'?'block':'none'}">
         <label>Quincena de cobro</label><select id="p_qc">
           <option value="1" ${x.quincenaCobro==1?'selected':''}>Primera quincena</option>
@@ -3029,7 +3033,7 @@ function guardarPrestamo(id){
   if(!tid){toast('Selecciona un trabajador','err');return}
   if(m<=0){toast('El monto debe ser mayor a cero','err');return}
   const d={trabajadorId:tid,fecha:g('fecha'),descripcion:g('desc').trim(),montoTotal:m,
-    modalidad:g('mod'),quincenaCobro:+g('qc')||2,cuotas:n,montoCuota:m/n,estado:g('estado')};
+    modalidad:g('mod'),quincenaCobro:+g('qc')||2,cuotas:n,montoCuota:m/n,desde:(g('desde')||''),estado:g('estado')};
   if(id){ Object.assign(DB.prestamos.find(x=>x.id===id),d); toast('Préstamo actualizado') }
   else{ (DB.prestamos??=[]).push({id:uid(),pagos:{},...d}); toast('Préstamo registrado') }
   save(); closeModal(); render();

@@ -505,6 +505,39 @@ body.vent-moviendo{user-select:none;-webkit-user-select:none;cursor:move}
 .vent::-webkit-resizer{background:linear-gradient(135deg,transparent 48%,var(--rule) 48%,var(--rule) 62%,transparent 62%,transparent 72%,var(--rule) 72%,var(--rule) 86%,transparent 86%)}
 .modal.vent,.fac-editor.vent{max-height:none}
 
+/* ══ LISTADOS · total y selección ══════════════════════════════════════
+   La casilla y la fila TOTAL las inyecta seleccion.js; aquí sólo su aspecto. */
+th.sel-col,td.sel-col{width:1%;padding-right:10px!important;text-align:center;
+  white-space:nowrap;cursor:pointer}
+th.sel-col input,td.sel-col input{width:14px;height:14px;accent-color:var(--blue);
+  cursor:pointer;vertical-align:middle}
+tbody tr.sel-on td{background:#eef2ff!important}
+tbody tr.sel-on td.sel-col{box-shadow:inset 2px 0 0 var(--blue)}
+tr.sel-total td{border-top:2px solid var(--navy)!important;border-bottom:none!important;
+  font-weight:600;color:var(--navy);padding-top:9px!important;background:none!important}
+td.sel-total-lbl{font-size:10.5px;letter-spacing:1.2px;text-transform:uppercase;
+  color:var(--mut3);font-weight:600}
+
+/* barra de selección · abajo a la IZQUIERDA, para no chocar con
+   los botones flotantes de Indicadores y Auditoría */
+#selBarra{position:fixed;left:22px;bottom:16px;z-index:420;display:none;
+  align-items:center;gap:0;background:var(--navy);color:#fff;border-radius:5px;
+  padding:0 4px 0 14px;box-shadow:0 6px 22px rgba(20,31,71,.34);
+  font-family:Archivo,-apple-system,"Segoe UI",sans-serif;max-width:calc(100vw - 300px);
+  overflow-x:auto}
+#selBarra.on{display:flex}
+#selBarra .sb-n{font-size:11px;letter-spacing:.6px;color:#c3cfef;white-space:nowrap;
+  padding:10px 16px 10px 0;border-right:1px solid rgba(255,255,255,.18)}
+#selBarra .sb-i{display:flex;flex-direction:column;gap:1px;padding:8px 16px;
+  border-right:1px solid rgba(255,255,255,.18);white-space:nowrap}
+#selBarra .sb-i b{font-size:15px;font-weight:500;font-variant-numeric:tabular-nums}
+#selBarra .sb-i i{font-style:normal;font-size:8.5px;letter-spacing:1.2px;
+  text-transform:uppercase;color:#c3cfef}
+#selBarra .sb-x{background:none;border:none;color:#ffb684;cursor:pointer;
+  font-family:inherit;font-size:11px;font-weight:600;padding:10px 14px;letter-spacing:.4px}
+#selBarra .sb-x:hover{color:#fff}
+@media print{ #selBarra{display:none!important} th.sel-col,td.sel-col{display:none} }
+
 /* ── módulo Configuración ── */
 /* el filtro de año y la búsqueda no aplican aquí: sólo serían ruido */
 .wrap:has(#tab-config.active) > .toolbar{display:none}
@@ -2592,6 +2625,219 @@ var Ventanas = (function () {
 
   revisar();
   return { revisar: revisar, equipar: equipar };
+})();
+
+</script>
+<script>
+/* ═══════════════════════════════════════════════════════════════════════
+   LISTADOS · total al pie + selección con total a la vista
+   Genérico a propósito: detecta las columnas de dinero por el nombre de la
+   cabecera, así que vale para cualquier listado presente o futuro sin tocar
+   el render de cada pestaña.
+     · Todo listado termina en una fila TOTAL (respeta el filtro activo).
+     · Se pueden marcar filas sueltas y el total de lo marcado queda fijo abajo.
+   Los índices de columna son SIEMPRE lógicos (ignorando la casilla que
+   insertamos), porque si no se desplazan en cuanto se equipa la tabla.
+   ═══════════════════════════════════════════════════════════════════════ */
+var Seleccion = (function () {
+  'use strict';
+
+  /* «N° Factura» y «Facturas» NO son dinero; «Facturado» sí. Por eso los
+     términos van completos y no como raíces sueltas. */
+  var DINERO = /(^|\s)(base|total|monto|importe|saldo|cobrado|facturado|disponible|anticipo|amortizado|iva)(\s|$)|por\s+cobrar/i;
+  var TABLAS = ['tF', 'tVal', 'tVen', 'tPen', 'tCob', 'tPed'];
+  var sel = {};            // idTabla -> { clave: true }
+  var barra = null;
+  var mo = null;
+  var mutando = false;     // evita que nuestros propios cambios nos reactiven
+
+  function num(txt) {                       // formato de la casa: «$1,234.56»
+    var n = parseFloat(String(txt).replace(/[^\d.,-]/g, '').replace(/,/g, ''));
+    return isFinite(n) ? n : null;
+  }
+  function fmt(n) {
+    return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function celdas(tr) {                     // celdas reales, sin la casilla
+    return [].slice.call(tr.cells).filter(function (c) { return !c.classList.contains('sel-col'); });
+  }
+  function filas(tabla) {
+    var tb = tabla.tBodies[0];
+    return tb ? [].slice.call(tb.rows).filter(function (r) {
+      return !r.classList.contains('tfoot-row') && r.cells.length > 1;
+    }) : [];
+  }
+  function clave(tr) {
+    return celdas(tr).map(function (c) { return c.textContent.trim(); }).join('|');
+  }
+
+  /* Columna de dinero: cabecera que suena a importe Y con celdas numéricas. */
+  function columnasDinero(tabla) {
+    if (!tabla.tHead || !tabla.tHead.rows.length) return [];
+    var ths = celdas(tabla.tHead.rows[0]);
+    var fs = filas(tabla), out = [];
+    ths.forEach(function (th, i) {
+      if (!DINERO.test(th.textContent)) return;
+      var ok = 0;
+      fs.forEach(function (r) { var c = celdas(r)[i]; if (c && num(c.textContent) !== null) ok++; });
+      if (!fs.length || ok >= Math.max(1, fs.length * 0.6)) out.push({ i: i, t: th.textContent.trim() });
+    });
+    return out;
+  }
+
+  /* ── 1 · fila TOTAL al final ──────────────────────────────────────────── */
+  function totalizar(tabla, cols) {
+    var vieja = tabla.querySelector('tr.sel-total');
+    var propio = tabla.querySelector('.tfoot-row:not(.sel-total)');
+    if (!cols.length || propio) {                    // el módulo ya pone el suyo
+      if (vieja) vieja.parentNode.removeChild(vieja);
+      return;
+    }
+    var fs = filas(tabla);
+    if (!fs.length) { if (vieja) vieja.parentNode.removeChild(vieja); return; }
+
+    var nLog = celdas(tabla.tHead.rows[0]).length;
+    var suma = {};
+    cols.forEach(function (c) {
+      suma[c.i] = fs.reduce(function (a, r) {
+        var cel = celdas(r)[c.i];
+        return a + (cel ? (num(cel.textContent) || 0) : 0);
+      }, 0);
+    });
+
+    /* Idempotente a proposito: si el total no ha cambiado no se toca el DOM.
+       Reconstruirlo cada pasada mutaba el arbol, el observador lo recogia al
+       bajar la guarda y se reprogramaba solo: un bucle de 80 ms sin fin. */
+    var firma = fs.length + ':' + cols.map(function (c) { return c.i + '=' + suma[c.i].toFixed(2); }).join(',');
+    if (vieja && vieja.dataset.firma === firma) return;
+    if (vieja) vieja.parentNode.removeChild(vieja);
+
+    var tr = document.createElement('tr');
+    tr.className = 'tfoot-row sel-total';
+    tr.dataset.firma = firma;
+    if (tabla.querySelector('th.sel-col')) {
+      var vacia = document.createElement('td'); vacia.className = 'sel-col'; tr.appendChild(vacia);
+    }
+    for (var i = 0; i < nLog; i++) {
+      var td = document.createElement('td');
+      if (i in suma) { td.textContent = fmt(suma[i]); td.className = 'num'; }
+      else if (i === 0) { td.textContent = 'TOTAL · ' + fs.length + ' reg.'; td.className = 'sel-total-lbl'; }
+      tr.appendChild(td);
+    }
+    (tabla.tFoot || tabla.appendChild(document.createElement('tfoot'))).appendChild(tr);
+  }
+
+  /* ── 2 · columna de selección ─────────────────────────────────────────── */
+  function equipar(tabla, cols) {
+    if (!cols.length) return;
+    var id = tabla.id;
+    sel[id] = sel[id] || {};
+
+    if (!tabla.querySelector('th.sel-col')) {
+      var th = document.createElement('th');
+      th.className = 'sel-col';
+      th.innerHTML = '<input type="checkbox" title="Marcar todo lo visible">';
+      tabla.tHead.rows[0].insertBefore(th, tabla.tHead.rows[0].firstChild);
+      th.firstChild.addEventListener('change', function (e) {
+        filas(tabla).forEach(function (r) { sel[id][clave(r)] = e.target.checked; });
+        pintar(tabla, cols);
+      });
+    }
+    filas(tabla).forEach(function (r) {
+      if (r.querySelector('td.sel-col')) return;
+      var td = document.createElement('td');
+      td.className = 'sel-col';
+      var cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = !!sel[id][clave(r)];
+      cb.addEventListener('change', function () { sel[id][clave(r)] = cb.checked; pintar(tabla, cols); });
+      td.appendChild(cb);
+      td.addEventListener('click', function (e) { if (e.target !== cb) cb.click(); });
+      r.insertBefore(td, r.firstChild);
+    });
+  }
+
+  /* ── 3 · filas marcadas y barra global ───────────────────────────────── */
+  /* OJO: la barra es UNA sola para toda la app, pero `revisar()` recorre las
+     seis tablas. Si cada `pintar` decidiera sobre ella, la última tabla sin
+     nada marcado la apagaría — que es justo lo que pasaba. Por eso pintar()
+     sólo toca su tabla y la barra la decide `actualizarBarra()` mirando todas. */
+  function pintar(tabla, cols) {
+    var id = tabla.id, fs = filas(tabla);
+    var marcadas = fs.filter(function (r) { return sel[id][clave(r)]; });
+    fs.forEach(function (r) {
+      var on = !!sel[id][clave(r)];
+      r.classList.toggle('sel-on', on);
+      var cb = r.querySelector('td.sel-col input');
+      if (cb) cb.checked = on;
+    });
+    var th = tabla.querySelector('th.sel-col input');
+    if (th) {
+      th.checked = marcadas.length > 0 && marcadas.length === fs.length;
+      th.indeterminate = marcadas.length > 0 && marcadas.length < fs.length;
+    }
+    actualizarBarra();
+  }
+
+  function visible(el) { return !!(el.offsetParent || el.getClientRects().length); }
+
+  function actualizarBarra() {
+    if (!barra) { barra = document.createElement('div'); barra.id = 'selBarra'; document.body.appendChild(barra); }
+    var elegida = null;
+    for (var k = 0; k < TABLAS.length; k++) {
+      var t = document.getElementById(TABLAS[k]);
+      if (!t || !t.tHead || !t.tBodies.length || !visible(t)) continue;
+      var m = filas(t).filter(function (r) { return (sel[t.id] || {})[clave(r)]; });
+      if (m.length) { elegida = { t: t, m: m, cols: columnasDinero(t) }; break; }
+    }
+    if (!elegida) { barra.classList.remove('on'); barra.innerHTML = ''; return; }
+
+    var fs = filas(elegida.t);
+    var partes = elegida.cols.map(function (c) {
+      var s2 = elegida.m.reduce(function (a, r) {
+        var cel = celdas(r)[c.i];
+        return a + (cel ? (num(cel.textContent) || 0) : 0);
+      }, 0);
+      return '<span class="sb-i"><b>' + fmt(s2) + '</b><i>' + c.t + '</i></span>';
+    }).join('');
+    var html = '<span class="sb-n">' + elegida.m.length + ' de ' + fs.length +
+      ' seleccionada' + (elegida.m.length === 1 ? '' : 's') + '</span>' + partes +
+      '<button class="sb-x" type="button">Limpiar</button>';
+    if (barra.innerHTML !== html) barra.innerHTML = html;
+    barra.querySelector('.sb-x').onclick = function () {
+      sel[elegida.t.id] = {}; pintar(elegida.t, elegida.cols);
+    };
+    barra.classList.add('on');
+  }
+
+  function revisar() {
+    if (mutando) return;
+    mutando = true;
+    try {
+      TABLAS.forEach(function (id) {
+        var t = document.getElementById(id);
+        if (!t || !t.tHead || !t.tBodies.length) return;
+        var cols = columnasDinero(t);
+        equipar(t, cols);          // primero la casilla…
+        totalizar(t, cols);        // …y luego el total, que ya la contempla
+        pintar(t, cols);
+      });
+    } finally {
+      // descartar lo que hemos mutado nosotros: si no, el observador lo
+      // entrega despues de bajar la guarda y se reprograma en bucle
+      if (mo) mo.takeRecords();
+      mutando = false;
+    }
+  }
+
+  var pendiente = null;
+  function programar() { clearTimeout(pendiente); pendiente = setTimeout(revisar, 80); }
+  var raiz = document.querySelector('.wrap') || document.body;
+  var mo = new MutationObserver(function () { if (!mutando) programar(); });
+  mo.observe(raiz, { childList: true, subtree: true });
+  programar();
+
+  return { revisar: revisar, limpiar: function () { sel = {}; programar(); } };
 })();
 
 </script>
