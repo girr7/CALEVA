@@ -957,6 +957,8 @@ var Store={
 /* Cada 'factura' agrupa sus lineas HES (una factura = un No.Factura).
    Clasificacion validada contra DATOS por la columna STATUS (igual que la hoja ANALISIS). */
 function esCobrada(f){return f.status==='Pagada';}
+function monCanon(m){ var x=String(m==null?'':m).trim(); if(!x)return ''; var k=x.toLowerCase().replace(/\./g,'').replace(/\s+/g,''); if(k==='usd'||k==='us$'||k==='$'||k==='dolar'||k==='dolares'||k==='d\u00f3lar'||k==='d\u00f3lares')return 'USD'; if(k==='bs'||k==='bss'||k==='bsf'||k==='bsd'||k==='ves'||k==='vef'||k==='bolivar'||k==='bol\u00edvar'||k==='bolivares'||k==='bol\u00edvares')return 'Bs'; if(k==='eur'||k==='\u20ac'||k==='euro'||k==='euros')return 'EUR'; return x; }
+function monDeFactura(f){ try{ if(typeof pedidoPorNum==='function'){ var p=pedidoPorNum(f&&f.pedido); if(p&&p.moneda)return monCanon(p.moneda); } }catch(e){} return monCanon(f&&f.moneda); }
 function esPorCobrar(f){return f.status!=='Pagada';}
 function esParcial(f){return esPorCobrar(f) && (+f.pagos||0)>0.01;}
 /* Copia SIN los campos transitorios (_m, _mora...). No son datos: los
@@ -1222,7 +1224,7 @@ var UI={
       return '<tr><td class="mono"><a class="flink" onclick="UI.verFactura(\''+sid(f.factura)+'\')">'+f.factura+'</a></td><td class="center">'+fdate(f.fecha)+'</td><td class="center">'+(f.nHes||0)+'</td><td class="num">'+money(f.base)+'</td><td class="num">'+money(f.total)+'</td><td class="num">'+money(f.porCobrar)+'</td><td class="center">'+pill+'</td></tr>';}).join('');
     document.getElementById('modalTit').textContent='Pedido '+pedNum(ped)+(p?' · '+p.desc:'');
     document.getElementById('modalBody').innerHTML=
-      (p?'<div class="info-pedido" style="margin-bottom:10px"><span>Moneda <b>'+p.moneda+'</b></span><span>Monto <b>'+money(p.monto)+'</b></span><span>Facturado <b>'+money(p.facturado)+'</b></span><span>Disponible <b>'+money(p.disponible)+'</b></span><span>Avance <b>'+pct(pedAvance(p))+'</b></span></div>':'')+
+      (p?'<div class="info-pedido" style="margin-bottom:10px"><span>Moneda <b>'+monCanon(p.moneda)+'</b></span><span>Monto <b>'+money(p.monto)+'</b></span><span>Facturado <b>'+money(p.facturado)+'</b></span><span>Disponible <b>'+money(p.disponible)+'</b></span><span>Avance <b>'+pct(pedAvance(p))+'</b></span></div>':'')+
       (p&&(+p.anticipo||0)>0?'<div class="info-pedido" style="margin-bottom:10px"><span>Anticipo <b>'+money(p.anticipo)+'</b></span>'+(p.amortPct?'<span>Amortiza <b>'+p.amortPct+'%</b></span>':'')+'<span>Amortizado <b style="color:var(--purple)">'+money(anticipoAmortizado(p.pedido))+'</b></span><span>Saldo anticipo <b style="color:'+(saldoAnticipo(p)>0.01?'var(--navy)':'var(--green)')+'">'+money(saldoAnticipo(p))+'</b></span></div>':'')+
       (p&&pedCulminado(p)?'<div class="info-pedido" style="margin-bottom:10px;background:#e6fbf3;border:1px solid #b7ecd6"><span>Estado <b style="color:var(--green)">Culminado</b></span><span>Fecha de cierre <b>'+(p.fechaCierre?fdate(p.fechaCierre):'— (sin fecha)')+'</b></span><span>Ejecutado (facturado) <b>'+money(p.facturado)+'</b></span><span>Saldo no ejecutado <b>'+money(p.disponible)+'</b></span></div>':'')+
       '<div class="info-pedido" style="margin-bottom:10px"><span>Facturas <b>'+fs.length+'</b></span><span><b>'+pagN+'</b> pagadas</span><span><b>'+penN+'</b> pendientes</span><span>Cobrado <b style="color:var(--green)">'+money(cob)+'</b></span><span>Por cobrar <b style="color:'+(pc>0.01?'var(--red)':'var(--green)')+'">'+money(pc)+'</b></span></div>'+
@@ -1384,9 +1386,11 @@ var UI={
     var mPC=porc.reduce(function(a,f){return a+f.porCobrar;},0), mCob=F.reduce(function(a,f){return a+cobradoDe(f);},0);
     // filtro segmentado (incluye Análisis)
     function fb(v,txt){return '<button class="btn '+(filt===v?'g':'gr')+'" onclick="UI.setFacFiltro(\''+v+'\')">'+txt+'</button>';}
+    var monedas={};F.forEach(function(f){var mm=monDeFactura(f);if(mm)monedas[mm]=1;});
+    var monSel='<select id="facMoneda" onchange="UI.facMoneda(this.value)" style="padding:7px 10px;border:1px solid var(--bd);border-radius:7px;margin-right:8px"><option value="">Todas las monedas</option>'+Object.keys(monedas).sort().map(function(m){return '<option value="'+esc(m)+'"'+(self.facMon===m?' selected':'')+'>'+esc(m)+'</option>';}).join('')+'</select>';
     var seg='<div class="toolbar" style="margin-bottom:12px">'+fb('todas','Todas ('+F.length+')')+fb('porcobrar','Por cobrar ('+porc.length+')')+fb('cobradas','Cobradas ('+cob.length+')')+fb('analisis','📊 Análisis')+
       '<span style="flex:1"></span>'+
-      (filt==='analisis'?'':'<input id="facBuscar" placeholder="Buscar factura, pedido, HES, estación..." style="min-width:230px;padding:7px 10px;border:1px solid var(--bd);border-radius:7px" value="'+(this.facQ||'').replace(/"/g,'&quot;')+'" oninput="UI.facBuscar(this.value)"><button class="btn g" onclick="UI.exportarFacturas()">📋 Excel</button>')+'</div>';
+      (filt==='analisis'?'':monSel+'<input id="facBuscar" placeholder="Buscar factura, pedido, HES, estación..." style="min-width:230px;padding:7px 10px;border:1px solid var(--bd);border-radius:7px" value="'+(this.facQ||'').replace(/"/g,'&quot;')+'" oninput="UI.facBuscar(this.value)"><button class="btn g" onclick="UI.exportarFacturas()">📋 Excel</button>')+'</div>';
     // modo ANÁLISIS: muestra la cobranza avanzada
     if(filt==='analisis'){
       document.getElementById('tab-facturas').innerHTML=seg+Cobranza.html(F);
@@ -1405,6 +1409,7 @@ var UI={
     // buscador local
     var q=(this.facQ||'').toLowerCase();
     if(q)list=list.filter(function(f){var s=(f.factura+' '+f.pedido+' '+f.descPedido+' '+(f.lineas||[]).map(function(l){return l.hes+' '+l.estacion;}).join(' ')).toLowerCase();return s.indexOf(q)>=0;});
+    var _mon=(this.facMon||''); if(_mon)list=list.filter(function(f){return monDeFactura(f)===_mon;});
     this.facList=list;
     list.forEach(function(f){f._mora=esPorCobrar(f)?diasEntre(f.fVenc):null;});
     if(filt==='porcobrar')list.sort(function(a,b){return (b._mora||-999)-(a._mora||-999);});
@@ -1430,7 +1435,7 @@ var UI={
       var fp=fdate(f.fPago)||'<span style="color:var(--mut)">—</span>';
       return '<tr><td class="mono"><a class="flink" onclick="UI.verFactura(\''+sid(f.factura)+'\')">'+f.factura+'</a></td>'+
         '<td class="mono">'+f.pedido+'</td><td>'+esc(f.descPedido||'')+'</td><td class="center">'+(f.nHes||0)+'</td>'+
-        '<td class="center">'+(f.moneda||'—')+'</td>'+
+        '<td class="center">'+(monDeFactura(f)||'—')+'</td>'+
         '<td class="num">'+money(f.base)+'</td><td class="num">'+money(f.total)+'</td><td class="num">'+pc+'</td>'+
         '<td class="center">'+pill+'</td><td class="center">'+fdate(f.fVenc)+'</td><td class="center">'+mora+'</td>'+
         '<td class="center">'+fp+'</td><td class="center">'+acc+'</td></tr>';
@@ -1456,13 +1461,14 @@ var UI={
   },
   setFacFiltro:function(v){this.facFiltro=v;this.savePrefs();this.facturas(this.filtradas());},
   setPedFiltro:function(v){this.pedFiltro=v;this.pedidos();},
+  facMoneda:function(v){this.facMon=v;this.facturas(this.filtradas());},
   facBuscar:function(v){this.facQ=v;var e=document.activeElement;this.facturas(this.filtradas());var i=document.getElementById('facBuscar');if(i){i.focus();try{i.setSelectionRange(i.value.length,i.value.length);}catch(x){}}},
   exportarFacturas:function(){
     var list=this.facList||[];
     if(!list.length){toast('No hay facturas para exportar');return;}
     var hs=['Factura','Pedido','Descripción','HES','Moneda','Base','IVA','Total','Por cobrar','Cobrado (efvo)','Amortizado','Estado','Fecha','Vencimiento','Mora (días)','F. Pago'];
     var rows=list.map(function(f){var mora=esPorCobrar(f)?diasEntre(f.fVenc):'';
-      return [String(f.factura),pedNum(f.pedido),f.descPedido||'',f.nHes||0,f.moneda||'',f.base,f.iva,f.total,esPorCobrar(f)?f.porCobrar:0,(+f.pagos||0),(+f.amortizado||0),f.status,f.fecha||'',f.fVenc||'',(mora===null||mora==='')?'':mora,f.fPago||''];});
+      return [String(f.factura),pedNum(f.pedido),f.descPedido||'',f.nHes||0,monDeFactura(f)||'',f.base,f.iva,f.total,esPorCobrar(f)?f.porCobrar:0,(+f.pagos||0),(+f.amortizado||0),f.status,f.fecha||'',f.fVenc||'',(mora===null||mora==='')?'':mora,f.fPago||''];});
     var out=Xlsx.build([{name:'Facturas',headers:hs,rows:rows}]);
     var nm='Caleva_facturas_'+(this.facFiltro||'todas')+'_'+new Date().toISOString().slice(0,10)+'.xlsx';
     saveFile(nm,out,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet').then(function(ok){if(ok)toast(list.length+' facturas exportadas');});
@@ -1490,7 +1496,7 @@ var UI={
       var bar='<div style="background:#eef1f5;border-radius:5px;height:9px;overflow:hidden;min-width:70px"><div style="height:9px;width:'+barw+'%;background:'+(barw>=99?'var(--green)':'var(--blue)')+'"></div></div>';
       var cerradoAdm=p.cerrado && av<0.9995;
       var estado=pedCulminado(p)?'<span class="pill ok">Culminado'+(cerradoAdm?' *':'')+'</span>':'<span class="pill pend">Activo</span>';
-      return '<tr><td class="mono"><a class="flink" onclick="UI.verPedido(\''+sid(pedNum(p.pedido))+'\')">'+pedNum(p.pedido)+'</a></td><td>'+esc(p.desc)+'</td><td class="center">'+p.moneda+'</td><td class="num">'+money(p.monto)+'</td><td class="num">'+money(p.anticipo)+'</td><td class="num">'+money(p.facturado)+'</td><td>'+bar+'<div class="bar-val" style="text-align:center">'+pct(av)+'</div></td><td class="num">'+money(p.disponible)+'</td><td class="center">'+estado+'</td></tr>';}).join('');
+      return '<tr><td class="mono"><a class="flink" onclick="UI.verPedido(\''+sid(pedNum(p.pedido))+'\')">'+pedNum(p.pedido)+'</a></td><td>'+esc(p.desc)+'</td><td class="center">'+monCanon(p.moneda)+'</td><td class="num">'+money(p.monto)+'</td><td class="num">'+money(p.anticipo)+'</td><td class="num">'+money(p.facturado)+'</td><td>'+bar+'<div class="bar-val" style="text-align:center">'+pct(av)+'</div></td><td class="num">'+money(p.disponible)+'</td><td class="center">'+estado+'</td></tr>';}).join('');
     var tfoot=lista.length?'<tfoot><tr class="tfoot-row"><td colspan="3">TOTAL '+scope+' ('+lista.length+')</td><td class="num">'+money0(tMonto)+'</td><td class="num">'+money0(tAnt)+'</td><td class="num">'+money0(tFact)+'</td><td></td><td class="num">'+money0(tDisp)+'</td><td></td></tr></tfoot>':'';
     var titulo=pf==='activos'?'Pedidos activos':pf==='culminados'?'Pedidos culminados':'Ejecución de pedidos';
     document.getElementById('tab-pedidos').innerHTML=kp+filtRow+
@@ -1552,9 +1558,9 @@ var Export={
     var vr=Store.data.valuaciones.map(function(v){return [v.fecha||'',v.estacion||'',pedNum(v.pedido),v.val||'',+v.montoUSD||0,String(v.hes||''),String(v.fact||hs[String(v.hes||'').trim()]||''),v.desc||'',v.fechaHes||'',estadoVal(v,hs),v.origen==='app'?'APP':'Excel'];});
     var dh=['No. Factura','Fecha','Año','Mes','Cliente','No. Pedido','Desc. Pedido','No. HES','Descripción','BASE','IVA 16%','TOTAL FACTURA','ISLR 2%','BASE - ISLR','Moneda','Tasa BCV','Pagos','Por Cobrar','STATUS','Fecha Venc','Fecha Pago','Estacion','Valuacion','ORIGEN'];
     var dr=[];Store.data.facturas.forEach(function(f){(f.lineas||[]).forEach(function(l){var b=+l.base||0;var iva=r2(b*0.16),islr=r2(b*0.02),bi=r2(b-islr);var pag=f.status==='Pagada'?b:0,pc=f.status==='Pagada'?0:b;
-      dr.push([String(f.factura),f.fecha||'',+f.anio||'',+f.mes||'',f.cliente||'',pedNum(f.pedido),f.descPedido||'',String(l.hes||''),l.desc||'',b,iva,r2(b+iva),islr,bi,f.moneda||'',+f.tasa||0,pag,pc,f.status,f.fVenc||'',f.fPago||'',l.estacion||'',l.val||'',f.origen==='app'?'APP':'Excel']);});});
+      dr.push([String(f.factura),f.fecha||'',+f.anio||'',+f.mes||'',f.cliente||'',pedNum(f.pedido),f.descPedido||'',String(l.hes||''),l.desc||'',b,iva,r2(b+iva),islr,bi,monDeFactura(f)||'',+f.tasa||0,pag,pc,f.status,f.fVenc||'',f.fPago||'',l.estacion||'',l.val||'',f.origen==='app'?'APP':'Excel']);});});
     var ph=['PEDIDO','DESCRIPCION','MONTO PEDIDO','MONEDA','PLAZO DIAS','ANTICIPO','FACTURADO','DISPONIBLE','% AVANCE'];
-    var pr=pedidosReales().map(function(p){return [pedNum(p.pedido),p.desc||'',+p.monto||0,p.moneda||'',+p.plazo||0,+p.anticipo||0,+p.facturado||0,+p.disponible||0,+p.avance||0];});
+    var pr=pedidosReales().map(function(p){return [pedNum(p.pedido),p.desc||'',+p.monto||0,monCanon(p.moneda)||'',+p.plazo||0,+p.anticipo||0,+p.facturado||0,+p.disponible||0,+p.avance||0];});
     var out=Xlsx.build([{name:'VALUACIONES',headers:vh,rows:vr},{name:'DATOS',headers:dh,rows:dr},{name:'PEDIDOS',headers:ph,rows:pr}]);
     var nm='Caleva_export_'+new Date().toISOString().slice(0,10)+'.xlsx';
     saveFile(nm,out,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet').then(ok=>{if(ok)toast('Excel exportado: '+vr.length+' valuaciones · '+dr.length+' líneas · '+pr.length+' pedidos');});
@@ -1961,7 +1967,7 @@ var Val={nueva:false,items:[],
   cap:function(){var t=document.getElementById('itemsBody');if(!t)return;[...t.rows].forEach((r,i)=>{if(this.items[i]){this.items[i].estacion=r.cells[0].querySelector('input').value;this.items[i].montoUSD=r.cells[1].querySelector('input').value;this.items[i].desc=r.cells[2].querySelector('input').value;}});},
   addRow:function(){this.cap();this.items.push({estacion:'',montoUSD:'',desc:''});this.render();},
   delRow:function(i){this.cap();this.items.splice(i,1);if(!this.items.length)this.items.push({estacion:'',montoUSD:'',desc:''});this.render();},
-  onPed:function(){var p=document.getElementById('nvPed').value;if(p){document.getElementById('nvVal').value=Proc.siguienteVal(p);var pd=pedidoPorNum(p);document.getElementById('nvInfo').innerHTML=pd?('<b>'+pd.desc+'</b> · '+pd.moneda+' · disp. '+money(pd.disponible)):'';}},
+  onPed:function(){var p=document.getElementById('nvPed').value;if(p){document.getElementById('nvVal').value=Proc.siguienteVal(p);var pd=pedidoPorNum(p);document.getElementById('nvInfo').innerHTML=pd?('<b>'+pd.desc+'</b> · '+monCanon(pd.moneda)+' · disp. '+money(pd.disponible)):'';}},
   formNueva:function(){
     var peds=pedidosReales().sort((a,b)=>(+pedNum(a.pedido))-(+pedNum(b.pedido)));
     var opts='<option value="">— pedido —</option>'+peds.map(p=>'<option value="'+pedNum(p.pedido)+'">'+pedNum(p.pedido)+'  |  '+esc(p.desc)+'</option>').join('');
@@ -2047,7 +2053,7 @@ var Fact={
     var opts='<option value="">— elija pedido —</option>'+peds.map(p=>'<option'+(pedNum(p.pedido)===pedSel?' selected':'')+' value="'+pedNum(p.pedido)+'">'+pedNum(p.pedido)+'  |  '+esc(p.desc)+'</option>').join('');
     var ped=pedSel?pedidoPorNum(pedSel):null;
     var items=pedSel?Store.data.valuaciones.map((v,i)=>({v:v,i:i})).filter(o=>pedNum(o.v.pedido)===pedSel&&String(o.v.hes||'').trim()&&!hs[String(o.v.hes).trim()]):[];
-    var info=ped?'<div class="info-pedido"><span>Pedido <b>'+pedNum(ped.pedido)+'</b></span><span>'+ped.desc+'</span><span>Moneda <b>'+ped.moneda+'</b></span><span>Plazo <b>'+ped.plazo+' d</b></span><span>Disponible <b>'+money(ped.disponible)+'</b></span></div>':'';
+    var info=ped?'<div class="info-pedido"><span>Pedido <b>'+pedNum(ped.pedido)+'</b></span><span>'+ped.desc+'</span><span>Moneda <b>'+monCanon(ped.moneda)+'</b></span><span>Plazo <b>'+ped.plazo+' d</b></span><span>Disponible <b>'+money(ped.disponible)+'</b></span></div>':'';
     var rows=items.map(o=>'<tr data-idx="'+o.i+'" data-base="'+(+o.v.montoUSD||0)+'"><td class="center"><input type="checkbox" class="chk fchk" onchange="Fact.upd()"></td><td>'+esc(o.v.estacion)+'</td><td class="center">'+o.v.val+'</td><td class="mono">'+o.v.hes+'</td><td class="num">'+money(o.v.montoUSD)+'</td><td>'+(o.v.desc||'')+'</td></tr>').join('');
     var today=new Date().toISOString().slice(0,10);
     var lastTasa=(function(){if(BCV.tasa>0)return (+BCV.tasa).toFixed(4);var t=0;Store.data.facturas.forEach(f=>{if(f.tasa)t=f.tasa;});return t?(+t).toFixed(4):'';})();
