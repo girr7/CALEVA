@@ -2226,9 +2226,9 @@ var Factura={
       return '<tr style="height:0.45cm"><td style="border-left:'+bT+bb+'"></td>'+
         '<td colspan="4" class="fx-r fx-b fx-big" style="border-left:'+bT+';border-right:'+bT+bb+'">'+lbl+'</td>'+
         '<td class="fx-r fx-b fx-big" style="border-right:'+bT+bb+'">'+val+'</td></tr>';}
-    H.push(totRow('TOTAL NETO '+d.mon+' ..........',ve(d.neto,2),false));
-    H.push(totRow('IVA 16% '+d.mon+' ..........',ve(d.iva,2),false));
-    H.push(totRow('TOTAL '+d.mon+' ..........',ve(d.tot,2),true));
+    H.push(totRow('TOTAL NETO USD ..........',ve(d.neto,2),false));
+    H.push(totRow('IVA 16% USD ..........',ve(d.iva,2),false));
+    H.push(totRow('TOTAL USD ..........',ve(d.tot,2),true));
     // 36) espacio firmas + firmas
     H.push('<tr style="height:0.9cm"><td colspan="6" style="border-left:'+bM+';border-right:'+bM+'"></td></tr>');
     H.push('<tr style="height:0.5cm"><td colspan="3" class="fx-l" style="border-left:'+bM+';border-bottom:'+bM+';padding-left:1.5cm">COMPRADOR</td><td colspan="3" class="fx-r" style="border-right:'+bM+';border-bottom:'+bM+';padding-right:0.8cm">VENDEDOR</td></tr>');

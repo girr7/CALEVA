@@ -1932,6 +1932,7 @@ function vQuincena(){
     <span style="color:var(--txt2);font-weight:600">${esc(p.etiqueta)}</span>
     <span style="color:var(--txt3);font-size:12px">· tasa ${fN(R.tasa,2)} Bs/$</span>
     <div class="sp"></div>
+    <button class="btn" onclick="pdfVista('Quincena · Entrada de Datos')">↓ PDF</button>
     <button class="btn ${qDet?'p':''}" onclick="qDet=!qDet;render()">${qDet?'◀ Vista compacta':'Vista detallada ▶'}</button>
     <button class="btn" onclick="limpiarQuincena()" ${ro}>Limpiar</button></div>
 
@@ -1998,8 +1999,10 @@ function vNominas(){
            ['bonos','Bonos Personal',fUsd(R.granUSD)],['transporte','Transporte',fUsd(R.tot.bt_netoUSD)],
            ...(R.filas.some(f=>f.esC)?[['contratistas','Contratistas',fUsd(R.tot.ct_netoUSD)]]:[]),
            ['pagos','Instrucciones de Pago',R.grupos.length+' grupos']];
+  var curLbl=(T.filter(function(x){return x[0]===nTab;})[0]||["","Nómina"])[1];
   return `<div class="tabs">${T.map(([k,l,v])=>
     `<button class="${nTab===k?'on':''}" onclick="nTab='${k}';render()">${l}<span class="b">${v}</span></button>`).join('')}</div>
+    <div class="bar" style="margin:8px 0 2px"><div class="sp"></div><button class="btn" onclick="pdfVista('Nómina · ${curLbl}')">↓ PDF</button></div>
     ${({consolidado:vConsolidado,basica:vBasica,bonos:vBonos,transporte:vTransporte,contratistas:vContratistas,pagos:vPagos}[nTab]||vConsolidado)()}`;
 }
 
@@ -2211,6 +2214,21 @@ function htmlGrupo(i){
       </tbody></table>
     <div class="fm">Recibí conforme: ______________________________  Fecha: ____________<br>
       <span>${esc(g.nombre)} · ${fs.length} pago${fs.length===1?'':'s'} · Generado ${fFecha(hoy())}</span></div></div>`;
+}
+var PDF_CSS="@page{size:letter landscape;margin:10mm}*{box-sizing:border-box}body{font:11px/1.45 Barlow,'Segoe UI',Arial,sans-serif;color:#10171E;padding:0;background:#fff}.pdfhd{display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #1E5AA8;padding-bottom:10px;margin-bottom:14px}.pdfhd h1{font-size:16px;color:#002E5B;margin:0}.pdfhd h2{font-size:12px;color:#1E5AA8;font-weight:600;margin:2px 0 0}.pdflogo{height:42px;background:#fff;padding:2px 6px;border-radius:8px}table{width:100%;border-collapse:collapse;font-size:10px;margin:8px 0}th,td{border:1px solid #d7e0ea;padding:4px 6px;text-align:right;white-space:nowrap}th{background:#E8EEF5;color:#0F4676;text-align:center}td.tx,td.txs,th.lft{text-align:left;white-space:normal}tr.tot,tr.tot td{background:#eef3f8;font-weight:800}.strip,.kpis,.summary-list,.grid{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}.strip .c,.kpi{border:1px solid #d7e0ea;border-radius:8px;padding:6px 10px;min-width:120px}.summary-row{display:flex;justify-content:space-between;gap:16px;padding:5px 2px;border-bottom:1px solid #eef2f6}.note{border-left:3px solid #1E5AA8;background:#f4f8fc;padding:6px 10px;margin:8px 0;font-size:10px}.pill{padding:1px 6px;border-radius:8px;background:#eef3f8;font-size:9px}.u{display:block;font-size:8px;color:#7a8aa0;font-weight:500}";
+function pdfVista(titulo){
+  var view=document.getElementById('view'); if(!view){ window.print(); return; }
+  var clone=view.cloneNode(true);
+  clone.querySelectorAll('select').forEach(function(sl){ var sp=document.createElement('span'); var o=sl.options[sl.selectedIndex]; sp.textContent=(o&&o.text)||sl.value||''; sl.replaceWith(sp); });
+  clone.querySelectorAll('input').forEach(function(inp){ var sp=document.createElement('span'); sp.textContent=(inp.value!=null?inp.value:''); inp.replaceWith(sp); });
+  clone.querySelectorAll('button,.bar,.tabs,.flowbar,.compact-toggle,.side-toggle,.chk,.fchk').forEach(function(b){ b.remove(); });
+  var lbl=''; try{ lbl=calcPeriodo().p.etiqueta||''; }catch(e){}
+  var logo=''; try{ logo=(document.querySelector('.brand img')||{}).src||''; }catch(e){}
+  var w=window.open('','_blank','width=1050,height=760'); if(!w){ if(typeof toast==='function')toast('Permite ventanas emergentes para generar el PDF','err'); return; }
+  w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>'+titulo+'</title><style>'+PDF_CSS+'</style></head><body>'
+    +'<div class="pdfhd"><div><h1>'+titulo+'</h1><h2>'+lbl+'</h2></div>'+(logo?'<img class="pdflogo" src="'+logo+'">':'')+'</div>'
+    +'<div class="pdfbody">'+clone.innerHTML+'</div></body></html>');
+  w.document.close(); w.focus(); setTimeout(function(){ try{ w.print(); }catch(e){} },400);
 }
 function imprimirHTML(cuerpo){
   const w=window.open('','_blank','width=900,height=700');
