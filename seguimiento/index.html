@@ -1160,25 +1160,57 @@ var UI={
     var pill=f.status==='Pagada'?'<span class="pill ok">Pagada</span>':(esParcial(f)?'<span class="pill pend">Abono parcial</span>':'<span class="pill venc">Pendiente</span>');
     var lin=(f.lineas||[]).map(l=>'<tr><td class="mono">'+(l.hes||'—')+'</td><td>'+(l.estacion||'')+'</td><td class="center">'+(l.val||'')+'</td><td>'+(l.desc||'')+'</td><td class="num">'+money(l.base)+'</td></tr>').join('');
     var _pAnt=pedidoPorNum(f.pedido);var puedeAjustar=(f.status==='Pagada'&&_pAnt&&(+_pAnt.anticipo||0)>0);
+    var _t=+f.tasa||0; var _bs=function(v){return Number((+v||0)*_t).toLocaleString('es-VE',{minimumFractionDigits:2,maximumFractionDigits:2});};
+    var lineaBs=_t>0
+      ? '<div class="info-pedido" style="margin-bottom:12px;background:#f6f8fd;border:1px solid #e6ecf7;border-radius:8px;padding:7px 11px"><span>Base Bs <b>'+_bs(f.base)+'</b></span><span>IVA Bs <b>'+_bs(f.iva)+'</b></span><span>Total Bs <b>'+_bs(f.total)+'</b></span><span>Tasa BCV factura <b>'+Number(_t).toLocaleString('es-VE',{minimumFractionDigits:4,maximumFractionDigits:4})+' Bs/$</b></span></div>'
+      : '<div class="hint" style="margin-bottom:12px">Sin tasa BCV registrada en esta factura (no se puede mostrar el equivalente en Bs).</div>';
     document.getElementById('modalTit').textContent='Factura '+fac+'  ·  '+f.nHes+' HES';
     document.getElementById('modalBody').innerHTML=
       '<div class="info-pedido" style="margin-bottom:12px"><span>Pedido <b>'+f.pedido+'</b></span><span>Fecha <b>'+fdate(f.fecha)+'</b></span><span>Vence <b>'+fdate(f.fVenc)+'</b></span><span>'+pill+'</span></div>'+
       '<div class="info-pedido" style="margin-bottom:12px"><span>Base <b>'+money(f.base)+'</b></span><span>IVA <b>'+money(f.iva)+'</b></span><span>Total <b>'+money(f.total)+'</b></span><span>Cobrado <b>'+money(f.pagos)+'</b></span>'+((+f.amortizado||0)>0.01?'<span>Amortizado <b style="color:var(--purple)">'+money(f.amortizado)+'</b></span>':'')+'<span>Saldo <b style="color:'+(f.porCobrar>0.01?'var(--red)':'var(--green)')+'">'+money(f.porCobrar)+'</b></span></div>'+
+      lineaBs+
       '<table class="itemtbl"><thead><tr><th>HES</th><th>Estación</th><th class="center">Val</th><th>Descripción</th><th style="width:110px">Base</th></tr></thead><tbody>'+(lin||'<tr><td colspan="5" class="empty">Sin líneas</td></tr>')+'</tbody></table>'+
       '<div class="frow" style="margin-top:14px">'+
       '<button class="btn o" onclick="UI.cerrarModal();Factura.desdeFactura(\''+sid(fac)+'\')">🧾 Imprimir PDF</button>'+
       (f.porCobrar>0.01?'<button class="btn g req-edit-facturas" onclick="UI.cerrarModal();UI.abrirPago(\''+fac+'\')">Registrar pago</button>':'')+
       '<button class="btn o req-edit-facturas" onclick="UI.cerrarModal();UI.abrirFechaPago(\''+fac+'\')">📅 Editar fecha de pago</button>'+
       (puedeAjustar?'<button class="btn o req-edit-facturas" onclick="UI.cerrarModal();UI.abrirAjusteAmort(\''+fac+'\')">💠 Ajustar amortización</button>':'')+
+      '<button class="btn o req-admin" onclick="UI.cerrarModal();UI.abrirEditarFactura(\''+fac+'\')">✎ Editar / reasignar pedido</button>'+
       '<button class="btn r req-admin" onclick="UI.eliminarFactura(\''+fac+'\')">Eliminar factura</button>'+
       '<button class="btn gr" onclick="UI.cerrarModal()">Cerrar</button></div>'+
-      '<div class="hint">Eliminar la factura devuelve sus valuaciones al estado “Por facturar” y restituye el disponible del pedido.</div>';
+      '<div class="hint">Solo el administrador puede editar o eliminar una factura. Eliminarla devuelve sus valuaciones a “Por facturar” y restituye el disponible del pedido. Editar/reasignar queda registrado en Auditoría.</div>';
     document.getElementById('modalBg').classList.add('on');
   },
   eliminarFactura:function(fac){
     if(!confirm('¿Eliminar la factura '+fac+'? Sus valuaciones volverán a “Por facturar” y se restituye el disponible del pedido.'))return;
     var res=Proc.eliminarFactura(fac);if(res.err){toast(res.err);return;}
     this.cerrarModal();this.postWrite();toast('Factura '+fac+' eliminada');
+  },
+  abrirEditarFactura:function(fac){
+    if(!Auth.esAdmin()){toast('Solo el administrador puede modificar facturas');return;}
+    var f=Store.data.facturas.find(function(x){return String(x.factura)===String(fac);});if(!f){toast('Factura no encontrada');return;}
+    var peds=(typeof pedidosReales==='function')?pedidosReales():(Store.data.pedidos||[]);
+    var opts=peds.map(function(p){var n=pedNum(p.pedido);return '<option value="'+n+'"'+(n===pedNum(f.pedido)?' selected':'')+'>'+n+' · '+esc(String(p.desc||'').slice(0,44))+'</option>';}).join('');
+    document.getElementById('modalTit').textContent='Editar factura '+f.factura;
+    document.getElementById('modalBody').innerHTML=
+      '<div class="hint" style="margin-bottom:10px;color:#a86f00"><b>⚠ Modificación de factura ya generada.</b> Todo cambio queda registrado en <b>Auditoría</b> con autor y fecha.</div>'+
+      '<div class="frow"><div class="fld"><label>N° Factura</label><input id="efNum" value="'+esc(f.factura)+'"></div>'+
+      '<div class="fld"><label>Fecha</label><input id="efFecha" type="date" value="'+esc(f.fecha||'')+'"></div></div>'+
+      '<div class="frow"><div class="fld" style="flex:1"><label>Pedido (reasignar si se cargó al equivocado)</label><select id="efPed" class="wide" style="min-width:320px">'+opts+'</select></div></div>'+
+      '<div class="info-pedido" style="margin:6px 0 12px"><span>Base <b>'+money(f.base)+'</b></span><span>HES <b>'+f.nHes+'</b></span><span>Estado <b>'+esc(f.status)+'</b></span><span>Pedido actual <b>'+esc(f.pedido)+'</b></span></div>'+
+      '<div class="hint" style="margin-bottom:10px">Al reasignar el pedido: se traslada la base facturada (disponible/avance) del pedido anterior al nuevo, las valuaciones (HES) de esta factura pasan al nuevo pedido y el vencimiento se recalcula con el plazo del nuevo pedido.</div>'+
+      '<div class="frow"><button class="btn g" onclick="UI.guardarEditFactura(\''+sid(fac)+'\')">Guardar cambios</button><button class="btn r" onclick="UI.cerrarModal()">Cancelar</button></div>';
+    document.getElementById('modalBg').classList.add('on');
+  },
+  guardarEditFactura:function(fac){
+    var num=(document.getElementById('efNum')||{}).value;
+    var fch=(document.getElementById('efFecha')||{}).value;
+    var ped=(document.getElementById('efPed')||{}).value;
+    var f0=Store.data.facturas.find(function(x){return String(x.factura)===String(fac);});
+    var pedAnt=f0?pedNum(f0.pedido):'';
+    if(ped&&pedNum(ped)!==pedAnt){ if(!confirm('¿Reasignar la factura '+fac+' del pedido '+pedAnt+' al pedido '+pedNum(ped)+'? Se recalculan los montos de ambos pedidos.'))return; }
+    var res=Proc.editarFactura(fac,{factura:num,fecha:fch,pedido:ped}); if(res.err){toast(res.err);return;}
+    this.cerrarModal();this.postWrite();toast('Factura '+res.ok.factura+' actualizada'+(res.cambiaPed?' · reasignada al pedido '+res.ok.pedido:''));
   },
   nuevoPedido:function(){
     document.getElementById('modalTit').textContent='Nuevo pedido';
@@ -1433,7 +1465,7 @@ var UI={
       var pc=esPorCobrar(f)?money(f.porCobrar):'<span style="color:var(--mut)">—</span>';
       var acc=esPorCobrar(f)?'<button class="pay-btn req-edit-facturas" onclick="UI.abrirPago(\''+sid(f.factura)+'\')">Pago</button>':'';
       var fp=fdate(f.fPago)||'<span style="color:var(--mut)">—</span>';
-      return '<tr><td class="mono"><a class="flink" onclick="UI.verFactura(\''+sid(f.factura)+'\')">'+f.factura+'</a></td>'+
+      return '<tr><td class="mono"><a class="flink" onclick="UI.verFactura(\''+sid(f.factura)+'\')">'+f.factura+'</a>'+(f.fecha?' <span style="color:var(--mut);font-size:11px;font-weight:400;white-space:nowrap" title="Fecha de emisión">'+fdate(f.fecha)+'</span>':'')+'</td>'+
         '<td class="mono">'+f.pedido+'</td><td>'+esc(f.descPedido||'')+'</td><td class="center">'+(f.nHes||0)+'</td>'+
         '<td class="center">'+(monDeFactura(f)||'—')+'</td>'+
         '<td class="num">'+money(f.base)+'</td><td class="num">'+money(f.total)+'</td><td class="num">'+pc+'</td>'+
@@ -1453,7 +1485,7 @@ var UI={
     var titulo=filt==='porcobrar'?'Por cobrar & aging':filt==='cobradas'?'Cobradas':'Todas las facturas';
     var tbl='<div class="card"><div class="section-hdr">'+titulo+'<span class="section-hdr-right">'+list.length+' facturas'+(list.length>700?' (mostrando 700)':'')+'</span></div><div class="section-body">'+seg+
       '<table id="tF"><thead><tr>'+
-      th('Factura','tF',0)+th('Pedido','tF',1)+'<th>Descripción</th><th class="center">HES</th><th class="center">Moneda</th>'+th('Base','tF',5,1)+th('Total','tF',6,1)+th('Por cobrar','tF',7,1)+'<th class="center">Estado</th><th class="center">Vencim.</th><th class="center">Mora</th><th class="center">F. Pago</th><th class="center">Acción</th></tr></thead><tbody>'+
+      th('Factura · Emisión','tF',0)+th('Pedido','tF',1)+'<th>Descripción</th><th class="center">HES</th><th class="center">Moneda</th>'+th('Base','tF',5,1)+th('Total','tF',6,1)+th('Por cobrar','tF',7,1)+'<th class="center">Estado</th><th class="center">Vencim.</th><th class="center">Mora</th><th class="center">F. Pago</th><th class="center">Acción</th></tr></thead><tbody>'+
       (rows||'<tr><td colspan="13" class="empty">Sin facturas en este filtro</td></tr>')+'</tbody>'+tfoot+'</table></div></div>';
     var h=Store.data.historico||{};
     var histn='<div class="hint" style="margin-top:-8px;margin-bottom:14px">Histórico '+(h.desde||'')+'-'+(h.hasta||'')+': '+(h.facturas||0)+' facturas ('+(h.pagadas||0)+' cobradas).</div>';
@@ -1677,6 +1709,33 @@ var Proc={
     if(f.porCobrar<=0.01){f.porCobrar=0;if(f.pagos+f.amortizado>=base-0.01)f.status='Pagada';}
     Store.save();return {ok:f};
   },
+  /* Editar una factura YA generada (solo ADMIN). Permite corregir N° y fecha, y sobre todo
+     REASIGNAR el pedido cuando se cargó al pedido equivocado: traslada la base facturada
+     (facturado/disponible/avance) del pedido viejo al nuevo y mueve las valuaciones (HES) de
+     la factura al nuevo pedido. Todo queda en Auditoría por el diff universal en Store.save(). */
+  editarFactura:function(fac,c){
+    if(!Auth.esAdmin())return {err:'Solo el administrador puede modificar una factura ya generada'};
+    var f=Store.data.facturas.find(function(x){return String(x.factura)===String(fac);});if(!f)return {err:'Factura no encontrada.'};
+    var r2=function(n){return Math.round(n*100)/100;};
+    var base=+f.base||0;
+    var nn=(c.factura!=null)?String(c.factura).trim():String(f.factura);
+    if(c.factura!=null){ if(!/^[\w.\-]{1,20}$/.test(nn))return {err:'N° de factura inválido: solo letras, números, punto o guion (máx. 20).'};
+      if(nn!==String(f.factura)&&Store.data.facturas.some(function(x){return String(x.factura)===nn;}))return {err:'La factura '+nn+' ya existe.'}; }
+    if(c.fecha!=null&&c.fecha&&!/^\d{4}-\d{2}-\d{2}$/.test(c.fecha))return {err:'Fecha inválida.'};
+    var nuevoPed=(c.pedido!=null&&String(c.pedido).trim()!=='')?pedNum(c.pedido):pedNum(f.pedido);
+    var cambiaPed=nuevoPed!==pedNum(f.pedido);
+    if(cambiaPed){ var np=pedidoPorNum(nuevoPed); if(!np)return {err:'El pedido destino '+nuevoPed+' no existe.'};
+      var op=pedidoPorNum(f.pedido);
+      if(op){ op.facturado=r2((+op.facturado||0)-base); op.disponible=r2((+op.disponible||0)+base); if(op.monto>0)op.avance=r2(op.facturado/op.monto); }
+      np.facturado=r2((+np.facturado||0)+base); np.disponible=r2((+np.disponible||0)-base); if(np.monto>0)np.avance=r2(np.facturado/np.monto);
+      var hesF={}; (f.lineas||[]).forEach(function(l){var h=String(l.hes||'').trim(); if(h)hesF[h]=1;});
+      Store.data.valuaciones.forEach(function(v){ var h=String(v.hes||'').trim(); if(h&&hesF[h])v.pedido=nuevoPed; });
+      f.pedido=nuevoPed; f.descPedido=np.desc; f.moneda=np.moneda; }
+    if(c.fecha!=null&&c.fecha){ f.fecha=c.fecha; var dd=new Date(c.fecha+'T00:00:00'); if(!isNaN(dd)){ f.anio=dd.getFullYear(); f.mes=dd.getMonth()+1; } }
+    if(f.fecha){ var db=new Date(f.fecha+'T00:00:00'); var pv=pedidoPorNum(f.pedido); if(!isNaN(db))f.fVenc=new Date(db.getTime()+((pv&&pv.plazo)||0)*86400000).toISOString().slice(0,10); }
+    if(c.factura!=null&&nn!==String(f.factura)){ var old=String(f.factura); Store.data.valuaciones.forEach(function(v){ if(String(v.fact||'')===old)v.fact=nn; }); f.factura=nn; }
+    Store.save();return {ok:f,cambiaPed:cambiaPed};
+  },
   normalizarBase:function(){
     /* cobranza referida al monto BASE (base-ISLR queda solo como referencia de banco) */
     var r2=function(n){return Math.round(n*100)/100;};var n=0;
@@ -1708,6 +1767,16 @@ var Proc={
     if(c.hes!==undefined)v.hes=c.hes.trim();
     if(c.fechaHes!==undefined)v.fechaHes=c.fechaHes;
     Store.save();return {ok:1};
+  },
+  /* Reasigna una valuación PENDIENTE (sin HES/factura) a otro pedido. Se usa desde la importación
+     de HES por correo cuando el pedido del correo no coincide con el de la valuación. Auditado por save. */
+  reasignarValuacionPedido:function(idx,pedidoDest){
+    if(!Auth.puedeValuar())return {err:'Sin permiso para reasignar valuaciones'};
+    var v=Store.data.valuaciones[idx];if(!v)return {err:'Valuación no encontrada.'};
+    var pd=(typeof pedidoPorNum==='function')?pedidoPorNum(pedidoDest):null;if(!pd)return {err:'El pedido destino '+pedidoDest+' no existe.'};
+    var hs=(typeof hesSet==='function')?hesSet():{};var h=String(v.hes||'').trim();
+    if(h&&(String(v.fact||'').trim()||hs[h]))return {err:'La valuación ya está facturada; reasígnala desde la factura (Editar / reasignar pedido).'};
+    v.pedido=pedNum(pedidoDest);Store.save();return {ok:1};
   },
   eliminarValuacion:function(idx){
     if(!Auth.puedeBorrar())return {err:'Solo el administrador puede borrar valuaciones'};
@@ -2579,27 +2648,45 @@ UI.boot();
       while((m=reL.exec(txt))){ if(seen[m[1]])continue; seen[m[1]]=1; out.push({hes:m[1], desc:m[2].replace(/\s+/g,' ').trim(), pedido:m[3], monto:'', fecha:''}); } }
     return out; }
   function pending(){ return Store.data.valuaciones.map(function(v,i){return {v:v,i:i};}).filter(function(o){ return !String(o.v.hes||'').trim(); }); }
-  function match(rec, used){ var cand=pending().filter(function(o){ return String((typeof pedNum==='function'?pedNum(o.v.pedido):o.v.pedido))===String(rec.pedido) && !used[o.i]; });
-    if(!cand.length)return null; var best=null,bs=-1; cand.forEach(function(o){ var pp=(typeof pedidoPorNum==='function')?pedidoPorNum(o.v.pedido):null; var s=sim(rec.desc,(o.v.desc||'')+' '+(o.v.estacion||'')+' '+(pp&&pp.desc||'')); if(s>bs){bs=s;best=o;} }); return {o:best,score:bs}; }
+  function match(rec, used){ var pend=pending();
+    var cand=pend.filter(function(o){ return String((typeof pedNum==='function'?pedNum(o.v.pedido):o.v.pedido))===String(rec.pedido) && !used[o.i]; });
+    if(cand.length){ var best=null,bs=-1; cand.forEach(function(o){ var pp=(typeof pedidoPorNum==='function')?pedidoPorNum(o.v.pedido):null; var s=sim(rec.desc,(o.v.desc||'')+' '+(o.v.estacion||'')+' '+(pp&&pp.desc||'')); if(s>bs){bs=s;best=o;} }); return {o:best,score:bs,pedMismatch:false}; }
+    /* SEGURIDAD: no hay valuación pendiente en el pedido que indica el correo. Si el HES se parece
+       a una valuación pendiente de OTRO pedido, es probable que la valuación esté cargada al pedido
+       equivocado: se devuelve con pedMismatch=true para alertar y NO se aplica automáticamente. */
+    var otras=pend.filter(function(o){ return !used[o.i]; });
+    var b2=null,bs2=0.34; otras.forEach(function(o){ var pp=(typeof pedidoPorNum==='function')?pedidoPorNum(o.v.pedido):null; var s=sim(rec.desc,(o.v.desc||'')+' '+(o.v.estacion||'')+' '+(pp&&pp.desc||'')); if(s>bs2){bs2=s;b2=o;} });
+    if(b2)return {o:b2,score:bs2,pedMismatch:true};
+    return null; }
   function toDate(f){ if(!f)return today(); f=String(f); if(/^\d{4}-\d{2}-\d{2}/.test(f))return f.slice(0,10); var m=/(\d{2})[\/\-](\d{2})[\/\-](\d{4})/.exec(f); if(m)return m[3]+'-'+m[2]+'-'+m[1]; var d=new Date(f); if(!isNaN(d)){ var z=function(n){return (n<10?'0':'')+n;}; return d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate()); } return today(); }
   var _hesRes=[];
   function existingHesSet(){ var s={}; try{ (Store.data.facturas||[]).forEach(function(f){ (f.lineas||[]).forEach(function(l){ var hh=String(l.hes||'').trim(); if(hh)s[hh]=(f.factura||true); }); }); (Store.data.valuaciones||[]).forEach(function(v){ var hh=String(v.hes||'').trim(); if(hh&&!s[hh])s[hh]=true; }); }catch(e){} return s; }
   function analyze(recs){ var used={}, exist=existingHesSet(), res=[];
-    recs.forEach(function(r){ var dup=!!exist[String(r.hes).trim()]; var mt=dup?null:match(r,used); var o=mt&&mt.o; if(o)used[o.i]=1;
-      res.push({rec:r, idx:o?o.i:null, est:o?o.v.estacion:'', val:o?o.v.val:'', score:mt?mt.score:-1, dup:dup, ref:dup?exist[String(r.hes).trim()]:null}); });
+    recs.forEach(function(r){ var dup=!!exist[String(r.hes).trim()]; var mt=dup?null:match(r,used); var o=mt&&mt.o; var mis=!!(mt&&mt.pedMismatch);
+      if(o&&!mis)used[o.i]=1;
+      res.push({rec:r, idx:(o&&!mis)?o.i:null, misIdx:(o&&mis)?o.i:null, est:o?o.v.estacion:'', val:o?o.v.val:'', vped:o?String((typeof pedNum==='function'?pedNum(o.v.pedido):o.v.pedido)):'', score:mt?mt.score:-1, dup:dup, pedMismatch:mis, ref:dup?exist[String(r.hes).trim()]:null}); });
     return res; }
   function applySelected(){ var res=_hesRes||[], chosen={}; Array.prototype.forEach.call(document.querySelectorAll('.hesChk'),function(cb){ if(cb.checked)chosen[cb.getAttribute('data-i')]=1; });
     var selPed=document.getElementById('hesPed'); if(selPed)selPed.value=''; if(typeof Hes!=='undefined'&&Hes.render)Hes.render();
-    var n=0; res.forEach(function(x,i){ if(!chosen[i]||x.idx==null||x.dup)return; var tr=document.querySelector('#tab-hes tr[data-idx="'+x.idx+'"]'); if(!tr)return; var hh=tr.querySelector('.hHes'),f=tr.querySelector('.hFecha'),d=tr.querySelector('.hDesc'); if(hh)hh.value=x.rec.hes; if(f)f.value=toDate(x.rec.fecha); if(d&&x.rec.desc)d.value=x.rec.desc; tr.style.background='#e6fbf3'; n++; });
-    var out=document.getElementById('hesSyncOut'); if(out){ var nt=document.createElement('div'); nt.style.cssText='margin-top:8px;font-size:12px;color:#0a8f5b;font-weight:700'; nt.textContent=n+' HES aplicadas a la tabla. Revisa y pulsa Guardar HES.'; out.appendChild(nt); } }
+    var n=0,bad=0; res.forEach(function(x,i){ if(!chosen[i]||x.idx==null||x.dup||x.pedMismatch)return;
+      var v=Store.data.valuaciones[x.idx]; if(!v)return;
+      /* SEGURIDAD: nunca escribir un HES del correo en una valuación de otro pedido. */
+      if(String((typeof pedNum==='function'?pedNum(v.pedido):v.pedido))!==String(x.rec.pedido)){ bad++; return; }
+      var tr=document.querySelector('#tab-hes tr[data-idx="'+x.idx+'"]'); if(!tr)return; var hh=tr.querySelector('.hHes'),f=tr.querySelector('.hFecha'),d=tr.querySelector('.hDesc'); if(hh)hh.value=x.rec.hes; if(f)f.value=toDate(x.rec.fecha); if(d&&x.rec.desc)d.value=x.rec.desc; tr.style.background='#e6fbf3'; n++; });
+    var out=document.getElementById('hesSyncOut'); if(out){ var nt=document.createElement('div'); nt.style.cssText='margin-top:8px;font-size:12px;color:#0a8f5b;font-weight:700'; nt.textContent=n+' HES aplicadas a la tabla. Revisa y pulsa Guardar HES.'; out.appendChild(nt);
+      if(bad){ var bt=document.createElement('div'); bt.style.cssText='margin-top:4px;font-size:12px;color:#e11d48;font-weight:700'; bt.textContent='⚠ '+bad+' HES no se aplicaron: el pedido del correo no coincide con el de la valuación (posible carga a pedido equivocado).'; out.appendChild(bt); } } }
   function renderResults(res){ _hesRes=res; var out=document.getElementById('hesSyncOut'); if(!out)return;
-    var nApp=res.filter(function(x){return x.idx!=null&&!x.dup;}).length, nDup=res.filter(function(x){return x.dup;}).length;
-    var rows=res.map(function(x,i){ var estado, chk='';
+    var nApp=res.filter(function(x){return x.idx!=null&&!x.dup;}).length, nDup=res.filter(function(x){return x.dup;}).length, nMis=res.filter(function(x){return x.pedMismatch;}).length;
+    var rows=res.map(function(x,i){ var estado, chk='', bg='';
       if(x.dup) estado='<span style="color:#a86f00">ya registrada'+(typeof x.ref==='string'?(' (fact '+esc(x.ref)+')'):'')+'</span>';
+      else if(x.pedMismatch){ bg=' style="background:#fdecec"'; var destOk=(typeof pedidoPorNum==='function')&&!!pedidoPorNum(x.rec.pedido);
+        estado='<span style="color:#e11d48;font-weight:700">⚠ pedido no coincide</span> <span style="color:#7688ac">(correo: '+esc(x.rec.pedido)+' · valuación en pedido '+esc(x.vped)+(x.est?' · '+esc(x.est):'')+')</span>'
+          +(x.misIdx!=null&&destOk?'<br><button type="button" onclick="__hesReasignVal('+x.misIdx+',\''+esc(x.rec.pedido)+'\')" style="margin-top:4px;background:#1E5AA8;color:#fff;border:0;border-radius:7px;padding:5px 10px;font-size:11.5px;font-weight:700;cursor:pointer">→ Mover valuación al pedido '+esc(x.rec.pedido)+'</button>':(x.misIdx!=null?'<br><span style="color:#a86f00;font-size:11px">El pedido '+esc(x.rec.pedido)+' del correo no existe en el sistema; créalo primero.</span>':'')); }
       else if(x.idx!=null){ var conf=x.score>=0.5?'alta':(x.score>0?'media':'baja'); estado='✓ '+esc(x.est||'')+' / '+esc(x.val||'')+' <span style="color:#7688ac">('+conf+')</span>'; chk='<input type="checkbox" class="hesChk" data-i="'+i+'"'+(x.score>0?' checked':'')+'>'; }
       else estado='<span style="color:#e11d48">sin coincidencia</span>';
-      return '<tr><td style="text-align:center">'+chk+'</td><td>'+esc(x.rec.hes)+'</td><td>'+esc(x.rec.pedido)+'</td><td style="font-size:11px">'+esc(x.rec.desc)+'</td><td>'+estado+'</td></tr>'; }).join('');
-    out.innerHTML='<div style="font-size:12.5px;color:#10171E;font-weight:700;margin-bottom:6px">'+res.length+' HES leidas · '+nApp+' aplicables · '+nDup+' ya registradas</div>'
+      return '<tr'+bg+'><td style="text-align:center">'+chk+'</td><td>'+esc(x.rec.hes)+'</td><td>'+esc(x.rec.pedido)+'</td><td style="font-size:11px">'+esc(x.rec.desc)+'</td><td>'+estado+'</td></tr>'; }).join('');
+    out.innerHTML='<div style="font-size:12.5px;color:#10171E;font-weight:700;margin-bottom:6px">'+res.length+' HES leidas · '+nApp+' aplicables · '+nDup+' ya registradas'+(nMis?' · <span style="color:#e11d48">'+nMis+' con pedido no coincidente</span>':'')+'</div>'
+      +(nMis?'<div style="font-size:11.5px;color:#e11d48;background:#fdecec;border:1px solid #f5b5b5;border-radius:8px;padding:7px 10px;margin-bottom:8px">⚠ <b>Medida de seguridad:</b> '+nMis+' HES del correo apuntan a un pedido distinto al de la valuación que les corresponde. Verifica si la valuación quedó cargada al pedido equivocado antes de continuar.</div>':'')
       +'<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="color:#41527a;text-align:left"><th style="padding:5px 7px;text-align:center"><input type="checkbox" id="hesChkAll" checked></th><th>HES</th><th>Pedido</th><th>Descripcion</th><th>Valuacion / estado</th></tr></thead><tbody>'+rows+'</tbody></table>'
       +'<div style="margin-top:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button id="hesApplySel" style="background:#0a8f5b;color:#fff;border:0;border-radius:9px;padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer">Aplicar seleccionadas a la tabla</button><span style="font-size:11px;color:#6b7794">Marca cuales asignar; luego revisa la tabla y pulsa Guardar HES.</span></div>';
     var all=document.getElementById('hesChkAll'); if(all)all.onchange=function(){ var c=this.checked; Array.prototype.forEach.call(document.querySelectorAll('.hesChk'),function(cb){cb.checked=c;}); };
@@ -2627,6 +2714,17 @@ UI.boot();
     }
     var t=document.getElementById('hesSyncTxt'); if(t)t.value=''; var o=document.getElementById('hesSyncOut'); if(o)o.innerHTML=''; }
   window.__hesSyncOpen=openSync;
+  /* Acceso directo: mover una valuación pendiente al pedido que indica el correo, desde la alerta de mismatch. */
+  window.__hesReasignVal=function(idx,pedidoDest){ try{
+      var v=Store.data.valuaciones[idx]; if(!v){ if(typeof toast==='function')toast('Valuación no encontrada'); return; }
+      var actual=(typeof pedNum==='function'?pedNum(v.pedido):v.pedido);
+      if(!confirm('¿Mover la valuación "'+(v.estacion||v.desc||'')+'" del pedido '+actual+' al pedido '+pedidoDest+'?\n\nEl pedido correcto es el que indica el correo oficial de la HES.'))return;
+      var res=Proc.reasignarValuacionPedido(idx,pedidoDest);
+      if(res&&res.err){ if(typeof toast==='function')toast(res.err); return; }
+      if(typeof toast==='function')toast('Valuación movida al pedido '+pedidoDest+'. Vuelve a cruzar el correo.');
+      /* Re-analizar los mismos correos: ahora el HES debería coincidir por pedido. */
+      try{ if(_hesRes&&_hesRes.length)renderResults(analyze(_hesRes.map(function(x){return x.rec;}))); }catch(e){}
+    }catch(e){ if(typeof toast==='function')toast('No se pudo reasignar'); } };
   function injectBtn(){ var tab=document.getElementById('tab-hes'); if(!tab)return; var tb=tab.querySelector('.toolbar'); if(!tb||tb.querySelector('.hesSyncBtn'))return; var b=document.createElement('button'); b.className='btn gr hesSyncBtn'; b.type='button'; b.innerHTML='✉ Sincronizar HES por correo'; b.onclick=openSync; tb.insertBefore(b, tb.firstChild); }
   var tries=0; var iv=setInterval(function(){ tries++; if(tries>90){clearInterval(iv);} var tab=document.getElementById('tab-hes'); if(tab){ injectBtn(); if(!tab.__hesObs){ tab.__hesObs=new MutationObserver(function(){ injectBtn(); }); tab.__hesObs.observe(tab,{childList:true,subtree:true}); } } },1200);
 })();

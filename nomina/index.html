@@ -111,9 +111,14 @@ table{width:100%;border-collapse:separate;border-spacing:0;font-size:12px;white-
 th{background:#F5F6F7;padding:10px 10px;text-align:left;font-weight:800;font-size:9px;text-transform:uppercase;letter-spacing:.55px;color:#5B6B7A;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:2;line-height:1.25}
 td{padding:9px 10px;border-bottom:1px solid #edf1f5;color:#3A4652}
 td.tx{white-space:normal;line-height:1.35;max-width:220px;min-width:140px}td.txs{white-space:normal;line-height:1.3;max-width:160px;min-width:100px;font-size:11px}td.txm{white-space:normal;line-height:1.3;max-width:190px;font-size:11px;color:var(--txt2)}
-.sub2{display:block;font-size:9.5px;color:var(--txt3);line-height:1.25;margin-top:2px}th .u{display:block;font-weight:500;text-transform:none;letter-spacing:0;font-size:8.5px;color:#9FB6C7}
+.sub2{display:block;font-size:9.5px;color:var(--txt3);line-height:1.25;margin-top:2px}
+.vacTag{display:inline-block;font-size:10px;font-weight:700;color:#0a6b48;background:#d8f3e6;border:1px solid #9fdcbf;border-radius:6px;padding:0 5px;margin-left:4px;vertical-align:middle;white-space:nowrap}th .u{display:block;font-weight:500;text-transform:none;letter-spacing:0;font-size:8.5px;color:#9FB6C7}
 tbody tr{transition:background .15s ease}tbody tr:hover{background:#F5F6F7}tbody tr:last-child td{border-bottom:none}
 tr.tot{background:#F5F6F7;font-weight:750}tr.tot td{border-top:1px solid #d3e0ed}tr.off{opacity:.5;background:#fafafa}.num{text-align:right;font-variant-numeric:tabular-nums}
+td.ctr,th.ctr{text-align:center!important;font-variant-numeric:tabular-nums}
+.vacMdl .grid{gap:9px}.vacMdl .note{padding:8px 11px;font-size:11.5px;line-height:1.45}.vacMdl .f label{font-size:10px;margin-bottom:2px;color:var(--txt2)}.vacMdl table.dense td{padding:5px 6px}.vacMdl table.dense th{padding:6px 6px}.vacMdl input,.vacMdl select{padding:4px 6px}
+.vpill{display:inline-block;font-size:9.5px;font-weight:700;border-radius:6px;padding:0 5px;margin-left:3px;vertical-align:middle;white-space:nowrap}
+.vpill.vok{color:#0a6b48;background:#d8f3e6;border:1px solid #9fdcbf}.vpill.vwar{color:#8a5a00;background:#ffeecb;border:1px solid #f0cf8a}.vpill.vbad{color:#a11;background:#fde3e3;border:1px solid #f2b3b3}
 td input,td select{padding:5px 7px;background:#fff;border:1px solid var(--line2);border-radius:7px;font-size:11px}td input{width:72px;text-align:right}td input:focus,td select:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 3px rgba(49,124,194,.1)}td input.wide{width:140px;text-align:left}
 
 .pill{display:inline-flex;align-items:center;padding:3px 7px;border-radius:999px;font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;border:1px solid;white-space:nowrap}
@@ -1223,9 +1228,9 @@ var SB={
 };
 var ROL_SECS={
   admin:{ver:'*',editar:'*'},
-  nomina:{ver:['dash','quincena','nominas','txt','personal','prestamos','historial','periodos'],
-          editar:['quincena','nominas','txt','personal','prestamos','periodos']},
-  gerencia:{ver:['dash','nominas','historial','periodos'],editar:[]},
+  nomina:{ver:['dash','quincena','nominas','txt','personal','prestamos','vacaciones','historial','periodos'],
+          editar:['quincena','nominas','txt','personal','prestamos','vacaciones','periodos']},
+  gerencia:{ver:['dash','nominas','historial','periodos','vacaciones'],editar:[]},
   sin_acceso:{ver:[],editar:[]}
 };
 var SOLO_ADMIN={config:1,usuarios:1};
@@ -1547,8 +1552,9 @@ function calcPeriodo(pid){
     const modo = L.transpModo||'igual';
     const noAplicaTransporte = esC;
     const suspendido = !noAplicaTransporte && modo==='suspender';
+    const _vacDiasT = (!noAplicaTransporte && !suspendido && typeof vacDiasEnPeriodo==='function') ? vacDiasEnPeriodo(t,p) : 0;
     const sinTransporte = noAplicaTransporte || suspendido;
-    const faltasT = sinTransporte? 0 : (modo==='custom'? (+L.faltasTransporte||0) : faltas);
+    const faltasT = sinTransporte? 0 : Math.min(c.diasQuincena, (modo==='custom'? (+L.faltasTransporte||0) : faltas) + _vacDiasT);
     const bt_mensUSD  = sinTransporte? 0 : (+t.ticketTransporteUSD||0);
     const bt_quinUSD  = bt_mensUSD>0? bt_mensUSD/2 : 0;
     const bt_porFalta = bt_quinUSD>0? bt_quinUSD/c.diasQuincena : 0;
@@ -1585,15 +1591,18 @@ function calcPeriodo(pid){
     const ct_netoUSD = esC? (ct_subUSD + ct_ivaUSD - ct_retIVA - ct_retISLR - ct_presta) : 0;
     const ct_netoBs  = ct_netoUSD*tasa;
 
-    return {t,L,faltas,faltasT,base,esL,esC,suspendido,noAplicaTransporte,sinTransporte,modo,cuotas,pr_auto,
+    const vac_pagoUSD = (typeof vacPagoEnPeriodo==='function') ? vacPagoEnPeriodo(t,p) : 0;
+    const vac_pagoBs  = vac_pagoUSD*tasa;
+    const vacDias = (typeof vacDiasEnPeriodo==='function') ? vacDiasEnPeriodo(t,p) : 0;
+    return {t,L,faltas,faltasT,base,esL,esC,suspendido,noAplicaTransporte,sinTransporte,modo,cuotas,pr_auto,vac_pagoUSD,vac_pagoBs,vacDias,
       nb_ticketBs,nb_descBs,nb_netoBs,nb_sueldoBs,nb_totalBs,
       bt_mensUSD,bt_quinUSD,bt_porFalta,bt_descUSD,bt_netoUSD,bt_netoBs,
       bp_acordUSD,bp_quinUSD,bp_costoDia,bp_extraUSD,bp_descUSD,bp_vac,bp_uti,bp_prod,
       bp_presMan,bp_presAuto,bp_pres,bp_ajuste,bp_totalUSD,bp_totalBs,
       ct_contratoUSD,ct_aplica,ct_baseUSD,ct_prodUSD,ct_subUSD,ct_ivaUSD,ct_retIVA,ct_retISLR,ct_presta,ct_netoUSD,ct_netoBs,
       /* Total devengado por el trabajador en el período */
-      totalUSD: nb_totalBs/tasa + bp_totalUSD + bt_netoUSD + ct_netoUSD,
-      totalBs:  nb_totalBs + bp_totalBs + bt_netoBs + ct_netoBs,
+      totalUSD: nb_totalBs/tasa + bp_totalUSD + bt_netoUSD + ct_netoUSD + vac_pagoUSD,
+      totalBs:  nb_totalBs + bp_totalBs + bt_netoBs + ct_netoBs + vac_pagoBs,
       pmOk: !!(t.telefonoPM && t.cedula && t.bancoPM && t.bancoPM!=='---')};
   });
 
@@ -1607,6 +1616,7 @@ function calcPeriodo(pid){
     ct_baseUSD:S('ct_baseUSD'),ct_prodUSD:S('ct_prodUSD'),ct_subUSD:S('ct_subUSD'),ct_ivaUSD:S('ct_ivaUSD'),
     ct_retIVA:S('ct_retIVA'),ct_retISLR:S('ct_retISLR'),ct_presta:S('ct_presta'),
     ct_netoUSD:S('ct_netoUSD'),ct_netoBs:S('ct_netoBs'),
+    vac_pagoUSD:S('vac_pagoUSD'),vac_pagoBs:S('vac_pagoBs'),
     totalUSD:S('totalUSD'),totalBs:S('totalBs')};
 
   const bancoPagador=bancoClave(c.bancoPagadorPM||'BANESCO');
@@ -1622,8 +1632,8 @@ function calcPeriodo(pid){
   const granUSD=grupos.reduce((a,g)=>a+g.totUSD,0), granBs=grupos.reduce((a,g)=>a+g.totBs,0);
 
   const R={p,c,tasa,ticketAlimBs,diarioTicketBs,convDepUSD,filas,tot,grupos,granUSD,granBs,
-    granTotalUSD: tot.nb_totalBs/tasa+granUSD+tot.bt_netoUSD+tot.ct_netoUSD,
-    granTotalBs: tot.nb_totalBs+granBs+tot.bt_netoBs+tot.ct_netoBs};
+    granTotalUSD: tot.nb_totalBs/tasa+granUSD+tot.bt_netoUSD+tot.ct_netoUSD+tot.vac_pagoUSD,
+    granTotalBs: tot.nb_totalBs+granBs+tot.bt_netoBs+tot.ct_netoBs+tot.vac_pagoBs};
   PER=prev; return R;
 }
 /** Recalcula el período actual con una tasa hipotética */
@@ -1702,13 +1712,13 @@ async function traerTasaA(inputId){
 /* ═══════════ NAVEGACIÓN ═══════════ */
 const MENU=[{s:'Operación'},{k:'dash',c:'#4A7CB5',i:'<svg viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="2.2" fill="currentColor" opacity=".32"/><rect x="13" y="3" width="8" height="5" rx="2.2" fill="currentColor"/><rect x="13" y="10" width="8" height="11" rx="2.2" fill="currentColor" opacity=".32"/><rect x="3" y="13" width="8" height="8" rx="2.2" fill="currentColor"/></svg>',t:'Panel'},{k:'quincena',c:'#2c76bc',i:'<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3.2" fill="currentColor" opacity=".3"/><rect x="3" y="5" width="18" height="4.6" rx="3.2" fill="currentColor"/><rect x="6.7" y="2.4" width="2" height="4.2" rx="1" fill="currentColor"/><rect x="15.3" y="2.4" width="2" height="4.2" rx="1" fill="currentColor"/></svg>',t:'Quincena'},
   {k:'nominas',c:'#30cd93',i:'<svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="3.2" fill="currentColor" opacity=".3"/><circle cx="12" cy="12" r="3.1" fill="currentColor"/><circle cx="5.6" cy="12" r="1" fill="currentColor"/><circle cx="18.4" cy="12" r="1" fill="currentColor"/></svg>',t:'Nóminas'},{k:'txt',c:'#5497d7',i:'<svg viewBox="0 0 24 24"><path d="M12 2.6 21.5 8v2.2H2.5V8z" fill="currentColor"/><rect x="4.5" y="11.3" width="15" height="7.4" rx="1.2" fill="currentColor" opacity=".3"/><rect x="2.6" y="19.4" width="18.8" height="2.3" rx="1.15" fill="currentColor"/></svg>',t:'TXT BNC'},
-  {s:'Maestros'},{k:'personal',c:'#2e7cc5',i:'<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.6" fill="currentColor"/><path d="M2.4 20.4c0-3.7 3-6.2 6.6-6.2s6.6 2.5 6.6 6.2z" fill="currentColor" opacity=".3"/><circle cx="17.2" cy="8.6" r="2.7" fill="currentColor" opacity=".6"/><path d="M15.4 14.6c2.9.3 5 2.4 5 5.6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" opacity=".6"/></svg>',t:'Personal'},{k:'prestamos',c:'#f49a2b',i:'<svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="3.2" fill="currentColor" opacity=".3"/><rect x="2" y="8.4" width="20" height="3.1" fill="currentColor"/><rect x="5" y="14.6" width="6.5" height="2.1" rx="1.05" fill="currentColor"/></svg>',t:'Préstamos'},
+  {s:'Maestros'},{k:'personal',c:'#2e7cc5',i:'<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.6" fill="currentColor"/><path d="M2.4 20.4c0-3.7 3-6.2 6.6-6.2s6.6 2.5 6.6 6.2z" fill="currentColor" opacity=".3"/><circle cx="17.2" cy="8.6" r="2.7" fill="currentColor" opacity=".6"/><path d="M15.4 14.6c2.9.3 5 2.4 5 5.6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" opacity=".6"/></svg>',t:'Personal'},{k:'prestamos',c:'#f49a2b',i:'<svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="3.2" fill="currentColor" opacity=".3"/><rect x="2" y="8.4" width="20" height="3.1" fill="currentColor"/><rect x="5" y="14.6" width="6.5" height="2.1" rx="1.05" fill="currentColor"/></svg>',t:'Préstamos'},{k:'vacaciones',c:'#0a8f5b',i:'<svg viewBox="0 0 24 24"><circle cx="12" cy="7" r="3" fill="currentColor"/><rect x="11" y="9" width="2" height="11" rx="1" fill="currentColor" opacity=".45"/><path d="M12 6C9 4 5 6 5 6c2 .6 4 2 5 3.4M12 6c3-2 7 0 7 0-2 .6-4 2-5 3.4" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>',t:'Vacaciones'},
   {k:'historial',c:'#D2554F',i:'<svg viewBox="0 0 24 24"><rect x="3" y="12" width="4.2" height="8.4" rx="1.6" fill="currentColor" opacity=".42"/><rect x="9.9" y="4.6" width="4.2" height="15.8" rx="1.6" fill="currentColor"/><rect x="16.8" y="9" width="4.2" height="11.4" rx="1.6" fill="currentColor" opacity=".42"/></svg>',t:'Historial'},
   {k:'periodos',c:'#32cf95',i:'<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3.2" fill="currentColor" opacity=".3"/><rect x="3" y="5" width="18" height="4.6" rx="3.2" fill="currentColor"/><rect x="6.6" y="12.4" width="4.2" height="4.4" rx="1" fill="currentColor"/><path d="M13.4 13.4h4.6M13.4 16.4h3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>',t:'Períodos'},
   {s:'Administración'},{k:'config',c:'#9FB6C7',i:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" fill="currentColor" opacity=".32"/><circle cx="12" cy="12" r="1.9" fill="currentColor"/><g fill="currentColor"><rect x="11" y="2.3" width="2" height="3.6" rx="1"/><rect x="11" y="18.1" width="2" height="3.6" rx="1"/><rect x="2.3" y="11" width="3.6" height="2" rx="1"/><rect x="18.1" y="11" width="3.6" height="2" rx="1"/><rect x="4.6" y="5.2" width="2" height="3.4" rx="1" transform="rotate(-45 5.6 6.9)"/><rect x="17.4" y="15.4" width="2" height="3.4" rx="1" transform="rotate(-45 18.4 17.1)"/></g></svg>',t:'Configuración'},{k:'usuarios',c:'#5b9cd9',i:'<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4" fill="currentColor"/><path d="M4 20.4c0-4 3.6-6.6 8-6.6s8 2.6 8 6.6z" fill="currentColor" opacity=".3"/></svg>',t:'Usuarios'}];
-const SUBTITULOS={dash:'Resumen ejecutivo del período seleccionado',quincena:'Captura y control de incidencias de nómina',nominas:'Desglose financiero y operativo del período',txt:'Preparación del archivo bancario de dispersión',personal:'Administración del maestro de trabajadores',prestamos:'Control de créditos, cuotas y saldos',historial:'Trazabilidad individual de pagos e incidencias',periodos:'Gestión del ciclo y estados de nómina',config:'Parámetros generales del workspace',usuarios:'Gestión de acceso por rol'};
+const SUBTITULOS={dash:'Resumen ejecutivo del período seleccionado',quincena:'Captura y control de incidencias de nómina',nominas:'Desglose financiero y operativo del período',txt:'Preparación del archivo bancario de dispersión',personal:'Administración del maestro de trabajadores',prestamos:'Control de créditos, cuotas y saldos',vacaciones:'Días causados, disfrute, saldo y pago · LOTTT',historial:'Trazabilidad individual de pagos e incidencias',periodos:'Gestión del ciclo y estados de nómina',config:'Parámetros generales del workspace',usuarios:'Gestión de acceso por rol'};
 const TITULOS={dash:'Panel de Nómina',quincena:'Quincena · Entrada de Datos',nominas:'Nóminas del Período',
-  txt:'Generación TXT · Banco BNC',personal:'Maestro de Personal',prestamos:'Préstamos al Personal',
+  txt:'Generación TXT · Banco BNC',personal:'Maestro de Personal',prestamos:'Préstamos al Personal',vacaciones:'Control de Vacaciones',
   historial:'Historial por Trabajador',periodos:'Períodos de Nómina',config:'Configuración',usuarios:'Usuarios y Permisos'};
 const REG={LOTTT:{p:'lottt',c:'LOTTT'},FREELANCE:{p:'free',c:'FREE'},CONTRATISTA:{p:'contr',c:'CONTR'}};
 const pillReg=t=>`<span class="pill ${(REG[t]||REG.LOTTT).p}">${(REG[t]||REG.LOTTT).c}</span>`;
@@ -1747,7 +1757,7 @@ function render(){
   const sub=document.getElementById('tsub'); if(sub) sub.textContent=SUBTITULOS[VIEW]||'';
   document.title=(TITULOS[VIEW]||'CALEVA')+' · CALEVA Payroll';
   document.getElementById('view').innerHTML=({dash:vDash,quincena:vQuincena,nominas:vNominas,
-    txt:vTxt,personal:vPersonal,prestamos:vPrestamos,historial:vHistorial,periodos:vPeriodos,config:vConfig,usuarios:vDash}[VIEW]||vDash)();
+    txt:vTxt,personal:vPersonal,prestamos:vPrestamos,vacaciones:(window.vVacaciones||vDash),historial:vHistorial,periodos:vPeriodos,config:vConfig,usuarios:vDash}[VIEW]||vDash)();
   window.scrollTo(0,0);
 }
 
@@ -1886,6 +1896,7 @@ function vDash(){
           <div class="summary-row"><span class="name">Nómina básica · depósito en cuenta</span><span class="usd">${fUsd(R.tot.nb_totalBs/R.tasa)}</span><span class="bs">${fBs(R.tot.nb_totalBs)} Bs.</span></div>
           <div class="summary-row"><span class="name">Bonos personal + comisión Pago Móvil</span><span class="usd">${fUsd(R.granUSD)}</span><span class="bs">${fBs(R.granBs)} Bs.</span></div>
           <div class="summary-row"><span class="name">Bono transporte · TodoTicket</span><span class="usd">${fUsd(R.tot.bt_netoUSD)}</span><span class="bs">${fBs(R.tot.bt_netoBs)} Bs.</span></div>
+          ${R.tot.vac_pagoUSD>0.004?`<div class="summary-row"><span class="name">Vacaciones pagadas (LOTTT)</span><span class="usd">${fUsd(R.tot.vac_pagoUSD)}</span><span class="bs">${fBs(R.tot.vac_pagoBs)} Bs.</span></div>`:''}
           <div class="summary-row total"><span class="name">Gran total del período</span><span class="usd">${fUsd(R.granTotalUSD)}</span><span class="bs">${fBs(R.granTotalBs)} Bs.</span></div>
         </div></section>
       <section class="section-card"><div class="section-head"><div class="section-head-icon">⌁</div><div class="section-title"><h3>Pagos por coordinador</h3><p>Control de dispersión de bonos por Pago Móvil</p></div><span class="tag">${R.grupos.length} grupos</span></div>
@@ -1954,7 +1965,7 @@ function vQuincena(){
     <tbody>${R.filas.map(f=>{
       const m=f.modo, tieneT=(+f.t.ticketTransporteUSD||0)>0;
       return `<tr>
-      <td class="stick tx"><b>${f.t.no}. ${esc(f.t.nombre)}</b><span class="sub2">${esc(docID(f.t))} · ${esc(f.t.cargo)}</span></td>
+      <td class="stick tx"><b>${f.t.no}. ${esc(f.t.nombre)}</b>${f.vacDias>0?` <span class="vacTag" title="De vacaciones: ${f.vacDias} día(s) hábil(es) en esta quincena">🏖️ ${f.vacDias}d</span>`:''}<span class="sub2">${esc(docID(f.t))} · ${esc(f.t.cargo)}</span></td>
       <td>${pillReg(f.t.tipo)}</td>
       <td class="num gl"><input type="number" class="xs" min="0" max="15" value="${f.L.faltas||0}" ${ro} onchange="setL('${f.t.id}','faltas',this.value)"></td>
       <td>${f.noAplicaTransporte?'<span class="pill grey">No aplica</span>':(tieneT||m==='suspender'?`<select ${ro} onchange="setL('${f.t.id}','transpModo',this.value)" style="width:${qDet?'92':'110'}px">
@@ -2272,7 +2283,7 @@ function vConsolidado(){
       ${hayC?'<th class="num gl">$</th><th class="num">Bs.</th>':''}
       <th class="num gl">TOTAL $</th><th class="num">TOTAL Bs.</th></tr></thead>
     <tbody>${R.filas.map(f=>`<tr>
-      <td class="stick tx"><b>${f.t.no}. ${esc(f.t.nombre)}</b><span class="sub2">${esc(docID(f.t))}</span></td>
+      <td class="stick tx"><b>${f.t.no}. ${esc(f.t.nombre)}</b>${f.vacDias>0?` <span class="vacTag" title="De vacaciones: ${f.vacDias} día(s) hábil(es) en esta quincena">🏖️ ${f.vacDias}d</span>`:''}<span class="sub2">${esc(docID(f.t))}</span></td>
       <td>${pillReg(f.t.tipo)}</td>
       <td class="num gl">${f.nb_totalBs?fBs(f.nb_totalBs):'—'}</td><td class="num" style="color:var(--txt2)">${f.nb_totalBs?fN(f.nb_totalBs/R.tasa):'—'}</td>
       <td class="num gl">${fN(f.bp_totalUSD)}</td><td class="num" style="color:var(--txt2)">${fBs(f.bp_totalBs)}</td>
@@ -2622,7 +2633,7 @@ function vPersonal(){
       <td><button class="btn sm ${act?'ok':'dg'}" onclick="cambiarEstatus('${t.id}')" style="padding:2px 7px">
         ${act?'● Activo':'○ Inactivo'}</button>${!act&&t.motivoInactivo?`<span class="sub2">${esc(t.motivoInactivo)}</span>`:''}</td>
       <td style="white-space:nowrap"><button class="btn sm" onclick="editTrab('${t.id}')" title="Editar">✎</button>
-        <button class="btn sm" onclick="hTrab='${t.id}';go('historial')" title="Ver ficha">📋</button></td></tr>`}).join('')
+        <button class="btn sm" onclick="verVacaciones('${t.id}')" title="Vacaciones">🌴</button><button class="btn sm" onclick="hTrab='${t.id}';go('historial')" title="Ver ficha">📋</button></td></tr>`}).join('')
       ||'<tr><td colspan="11" style="text-align:center;color:var(--txt3);padding:32px">Sin resultados</td></tr>'}
     </tbody></table></div>
   <div class="note" style="margin-top:12px"><b>Correlativo:</b> solo lo llevan los activos. Al dar de baja a alguien su número se libera y los demás se renumeran; si reingresa recibe un número nuevo. <b>Sueldo Base Bs.</b> es el monto fijo que se deposita cada quincena a los trabajadores LOTTT (${fBs(DB.config.sueldoBaseBsQuincena)} Bs., configurable). <b>Bono</b> y <b>Ticket</b> son montos mensuales del contrato que se dividen entre dos por quincena. Para ver lo que efectivamente cobra cada quien, abre su <b>Ficha</b>.</div>`;
@@ -3967,6 +3978,188 @@ boot();
       if(!ready){ snap(); }
       else if(d){ var out=[]; diff(prev,d,'',out); if(out.length){ var bef={},aft={}; out.forEach(function(c){ if('fa' in c)bef[c.p]=c.fa; if('fb' in c)aft[c.p]=c.fb; }); var disp=out.slice(0,120).map(function(c){return {p:c.p,op:c.op,a:c.a,b:c.b};}); A(label(out),(out[0]&&String(out[0].p).split(/[.[]/)[0])||'',{values:bef},{n:out.length,changes:disp,values:aft}); prev=clone(d); } }
     }catch(e){} return r; }; }
+})();
+</script>
+<script>
+/* ===== Caleva Nómina · MÓDULO VACACIONES (LOTTT) — BETA v2 =====
+   Feriados VE + migración de histórico + pago integrado + alertas + PDF ===== */
+(function(){ 'use strict';
+  function DBok(){ return (typeof DB!=='undefined'&&DB)?DB:null; }
+  var iv=setInterval(function(){ if(DBok()){ clearInterval(iv); DB.vacaciones=DB.vacaciones||[]; DB.vacaciones.forEach(function(v){ if(v.pagoEstado===undefined) v.pagoEstado = v.pagado?'ya_pagada':'pendiente'; }); } },250);
+  window.__VAC_HIST=[{"cedDigits": "18941085", "nombre": "SONAI ANYELINA MARTINEZ ROMERO", "periodos": [{"n": 1, "disfrutados": 15, "pagada": true, "fechas": "1) 09/02/24 AL27/02/24                                                                                                                                                                                                                                             2)20 al 23 de Septiembre 2024                                                                                                                                                                                                                                         3)2,3,4,7 de Octubre 2024", "obs": "PAGADAS Y DISFRUTADAS"}, {"n": 2, "disfrutados": 16, "pagada": true, "fechas": "1)  20/12/24 al 06/01/25 (Tomo 6 Dias)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        2)  20, 21/Febrero/25                                                                                                                                                                                                                                                         3)  05,06,07/Marzo/25                                                                                                                                                                                                                                                                   4)  08,09,10,11,12 /Septiembre/25", "obs": "PAGADAS Y DISFRUTADAS"}, {"n": 3, "disfrutados": 6, "pagada": false, "fechas": "1) 22/12/25 al 02/01/26(Tomo 6 Dias)", "obs": "Vencer Diciembre 2025"}, {"n": 4, "disfrutados": null, "pagada": false, "fechas": "Estas Vacaciones Vencen en Diciembre 2026", "obs": "Proximas vacaciones a vencer Diciembre 2026"}]}, {"cedDigits": "10537126", "nombre": "EMILIO JOSE ARNAL DIAZ", "periodos": [{"n": 1, "disfrutados": 15, "pagada": true, "fechas": "1)2/05/24 AL 23 /05/2024/ Tomo 15 Dias", "obs": "PAGADAS Y DISFRUTADAS"}, {"n": 2, "disfrutados": 12, "pagada": true, "fechas": "1)20/12/24 al 06/01/25 (Tomo 6 Dias)                                                                                                                                                                                                                                                          2) 22/12/25 al 02/01/26(Tomo 6 Dias) Tomo 12 Dias", "obs": "PAGADAS Y DISFRUTADAS"}, {"n": 3, "disfrutados": 18, "pagada": null, "fechas": "1)19/01/26 AL 2 /02/2026(Tomo 10 Dias)                                                                                                                                                                                                                  2) 1/04/26 (Tomo 1 Dia Semana santa)                                                                                                                                                                                                              3)07/09/26 AL 15 /09/2026(Tomo 07 Dias) Total tomada 18 dias", "obs": "Proximas vacaciones a vencer Marzo 2026 Se le va hacer el pago de sus vacaciones mas no el disfrute"}]}, {"cedDigits": "21092474", "nombre": "CHRIS YONEIKA ARTEAGA SUAREZ", "periodos": [{"n": 1, "disfrutados": 15, "pagada": true, "fechas": "1) 27/09/24 al 15/10/2024", "obs": "PAGADAS YDISFRUTADAS"}, {"n": 2, "disfrutados": 6, "pagada": true, "fechas": "1) 20/12/24 al 06/01/25(Tomo 6 Dias", "obs": "PAGADAS PENDIENTE  DIAS DE  DISFRUTE"}, {"n": 3, "disfrutados": 11, "pagada": true, "fechas": "1) 22/12/25 al 12/01/26(Tomo 11 Dias)", "obs": "PAGADAS PENDIENTE  DIAS DE  DISFRUTE"}, {"n": 4, "disfrutados": 12, "pagada": false, "fechas": "1) 1/04/26 (Tomo 1 Dia Semana santa)                     2) 1/10/2026 al 19/10/2026", "obs": "Proximas vacaciones a vencer Mayo 2026"}]}, {"cedDigits": "16034373", "nombre": "YURIBY ROSSY MIJARES DIAZ", "periodos": [{"n": 1, "disfrutados": 15, "pagada": true, "fechas": "1) 16/08/24 AL 06/09/2024", "obs": "PAGADAS Y DISFRUTADAS"}, {"n": 2, "disfrutados": 13, "pagada": true, "fechas": "1) 20/12/24 al 06/01/25(Tomo 6 Dias)                                                                                                                                                                                                                            2 ) Tomo el 24-11-2025(Tomo 1 Dias)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                3) 22/12/25 al 02/01/26(Tomo 6 Dias)Total 13 Dias", "obs": "PAGADAS Y DISFRUTADAS"}, {"n": 3, "disfrutados": 18, "pagada": null, "fechas": "1) 1/04/26 (Tomo 1 Dia Semana Santa)                                                                                                                                                                                                                     2) 09/04/26  al 10/04/26(Tomo 2 Dias)                                                                                                                                                                                                                                                                                                                                                                                                                                               3) 27/04/26 al 30/04/2026 (Tomo 4 Dias) Total 7 Dias 4) 20/10/2026 al 04/11/2026", "obs": "PAGADAS Y NO DISFRUTADAS"}]}, {"cedDigits": "12820851", "nombre": "GERMAN ANTONIO PALACIOS GOMEZ", "periodos": [{"n": 1, "disfrutados": 15, "pagada": true, "fechas": "1) 2 /05/2024 AL 22/05/2024", "obs": "DISFRITADAS Y PAGADAS"}, {"n": 2, "disfrutados": 12, "pagada": true, "fechas": "1) 20/12/24 al 06/01/25(Tomo 6 Dias)                                                                                                                                                                                                                            2) 22/12/25 al 02/01/26(Tomo 6 Dias) Total 12 Dias", "obs": "DISFRITADAS Y PAGADAS"}, {"n": 3, "disfrutados": 1, "pagada": false, "fechas": "1) 1/04/26 (Tomo 1 Dia Semana santa)", "obs": "Proximas vacaciones a vencer Mayo 2026"}]}, {"cedDigits": "14892627", "nombre": "CLAUDIA CARRILLO VALL", "periodos": [{"n": 1, "disfrutados": 0, "pagada": true, "fechas": "", "obs": ""}, {"n": 2, "disfrutados": 0, "pagada": null, "fechas": "", "obs": ""}, {"n": 3, "disfrutados": 0, "pagada": null, "fechas": "", "obs": ""}, {"n": 4, "disfrutados": 7, "pagada": false, "fechas": "1) 22/12/25 al 02/01/26(Tomo 6 Dias)                                                                                                                                                                                                                            2) 1/04/26 (Tomo 1 Dia Semana santa)", "obs": "Proxima vacaciones Vencen en Septiembre 2026"}]}, {"cedDigits": "4525990", "nombre": "BENIGNO ENRIQUE DOMINGUEZ COLMENAREZ", "periodos": [{"n": 1, "disfrutados": 15, "pagada": true, "fechas": "1) 29/07/24 al 16/08/24", "obs": "PAGADAS Y DISFRUTADAS"}, {"n": 2, "disfrutados": 16, "pagada": null, "fechas": "1) 20/12/24 al 06/01/25 (Tomo 6 Dias)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 2) 31/07/25 al 14/08/25", "obs": "PAGADAS Y DISFRUTADAS"}, {"n": 3, "disfrutados": 17, "pagada": true, "fechas": "3) 22/12/25 al 02/01/26(Tomo 6 Dias)                                                                                                                                                                                                                            2) 1/04/26 (Tomo 1 Dia Semana santa)                                                                                                                                                                                                                            3) Del 3,al 14 de Agosto 2026                                                                                                                                                                                                                                      (Tomo 10 Dia de sus vacaciones)", "obs": "Proxima vacaciones Vencen en Julio 2027"}]}, {"cedDigits": "82227641", "nombre": "ROSA MELENDEZ", "periodos": [{"n": 1, "disfrutados": 15, "pagada": true, "fechas": "1) 20/12/24 al 06/01/25                                                                                                                                                                                                                                                     2) 16-4/25 AL 5 -05/25", "obs": "PAGADAS Y DISFRUTADAS"}, {"n": 2, "disfrutados": 17, "pagada": null, "fechas": "16/4/25 AL 5 /05/25", "obs": "PAGADAS Y DISFRUTADAS"}, {"n": 3, "disfrutados": 18, "pagada": null, "fechas": "1) 22/12/25 al 02/01/26(Tomo 6 Dias)                                                                                                                                                                                                                                                                                                                                                                                                                                            1) 1/04/26 (Tomo 1 Dia Semana santa)                                                                                                                                                                                                                          3)11-5-26 Hata el 26-5-26(Tomo 11)", "obs": "PAGADAS Y DISFRUTADAS"}]}, {"cedDigits": "301667619", "nombre": "GABRIEL ISAAC RUIZ GOMEZ", "periodos": [{"n": 1, "disfrutados": 7, "pagada": null, "fechas": "1) 22/12/25 al 02/01/26(Tomo 6 Dias)                                                                                                                                                                                                                            2) 1/04/26 (Tomo 1 Dia Semana santa)", "obs": "Proxima vacaciones Vencen en Julio  2027"}]}];
+
+  function pd(x){ if(!x)return null; if(x instanceof Date)return x; var m=String(x).slice(0,10).split('-'); if(m.length===3&&m[0].length===4)return new Date(+m[0],+m[1]-1,+m[2]); var z=new Date(x); return isNaN(z)?null:z; }
+  function ymd(dt){ var z=pd(dt); if(!z)return ''; return z.getFullYear()+'-'+String(z.getMonth()+1).padStart(2,'0')+'-'+String(z.getDate()).padStart(2,'0'); }
+  /* ---- Feriados de Venezuela (nacionales LOTTT + Semana Santa/Carnaval por Pascua) ---- */
+  function easter(y){ var a=y%19,b=Math.floor(y/100),c=y%100,d=Math.floor(b/4),e=b%4,f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),h=(19*a+b-d-g+15)%30,i=Math.floor(c/4),k=c%4,l=(32+2*e+2*i-h-k)%7,m=Math.floor((a+11*h+22*l)/451),mo=Math.floor((h+l-7*m+114)/31),da=((h+l-7*m+114)%31)+1; return new Date(y,mo-1,da); }
+  var FERIADOS_FIJOS={'1-1':1,'4-19':1,'5-1':1,'6-24':1,'7-5':1,'7-24':1,'10-12':1,'12-24':1,'12-25':1,'12-31':1};
+  var _movCache={};
+  function movibles(y){ if(_movCache[y])return _movCache[y]; var e=easter(y); function add(d){ return ymd(new Date(e.getFullYear(),e.getMonth(),e.getDate()+d)); }
+    var set={}; [ -48,-47, -3,-2 ].forEach(function(off){ set[add(off)]=1; }); _movCache[y]=set; return set; }
+  function esFeriado(d){ d=pd(d); if(!d)return false; if(FERIADOS_FIJOS[(d.getMonth()+1)+'-'+d.getDate()])return true; return !!movibles(d.getFullYear())[ymd(d)]; }
+  window.esFeriadoVE=esFeriado;
+  function habiles(a,b){ a=pd(a); b=pd(b); if(!a||!b||b<a)return 0; var n=0,x=new Date(a); while(x<=b){ var w=x.getDay(); if(w!==0&&w!==6&&!esFeriado(x))n++; x.setDate(x.getDate()+1);} return n; }
+
+  function anios(t,ref){ var g=pd(t&&t.fechaIngreso); if(!g)return 0; ref=ref||new Date(); var y=ref.getFullYear()-g.getFullYear(); var an=new Date(g); an.setFullYear(g.getFullYear()+y); if(an>ref)y--; return Math.max(0,y); }
+  function ent(n){ return Math.min(15+(n-1),30); }
+  function maxRecN(id){ var m=0; recs(id).forEach(function(v){ if(+v.n>m)m=+v.n; }); return m; }
+  function vestDate(ing,n){ var g=pd(ing); if(!g)return null; var d=new Date(g); d.setFullYear(g.getFullYear()+n); return d; }
+  /* Causado = derechos de los períodos REGISTRADOS ya vencidos (aniversario cumplido según la ficha).      Un período nuevo se causa cuando su registro existe Y su aniversario pasó (p.ej. Sonai: su período 4 registrado se suma al llegar diciembre 2026).      Si el trabajador no tiene ningún registro (nuevo), se estima por aniversarios de la ficha. */
+  function causado(t){ var rs=recs(t.id); if(rs.length){ var out=0,now=new Date(); rs.forEach(function(v){ var vd=vestDate(t.fechaIngreso,+v.n); if(vd&&now>=vd) out+=ent(+v.n); }); return out; } var a=anios(t),x=0; for(var n=1;n<=a;n++)x+=ent(n); return x; }
+  function recs(id){ return ((DBok()&&DB.vacaciones)||[]).filter(function(v){return String(v.tId)===String(id);}); }
+  function disfPeriodo(id,n){ var r=rec(id,n); return ((r&&r.disfrutes)||[]).reduce(function(s,x){return s+(+x.dias||0);},0); }
+  function disfDe(id){ var s=0; recs(id).forEach(function(v){ (v.disfrutes||[]).forEach(function(x){ s+=(+x.dias||0); }); }); return s; }
+  function saldo(t){ return causado(t)-disfDe(t.id); }
+  /* Consumo FIFO: los disfrutes se consumen de los períodos más antiguos hacia los más recientes.      El pendiente queda siempre concentrado en el/los último(s) período(s). */
+  function vestedNs(t){ var rs=recs(t.id), arr=[], now=new Date(); if(rs.length){ rs.forEach(function(v){ var vd=vestDate(t.fechaIngreso,+v.n); if(vd&&now>=vd)arr.push(+v.n); }); } else { var a=anios(t); for(var n=1;n<=a;n++)arr.push(n); } arr.sort(function(a,b){return a-b;}); return arr; }
+  function fifoAlloc(t){ var pool=disfDe(t.id), out={}; vestedNs(t).forEach(function(n){ var cap=ent(n), take=Math.min(cap,Math.max(0,pool)); out[n]=take; pool-=take; }); return out; }
+  function fifoConsumido(t,n){ return fifoAlloc(t)[+n]||0; }
+  function fifoRest(t,n){ if(vestedNs(t).indexOf(+n)<0)return 0; return Math.max(0, ent(+n)-(fifoAlloc(t)[+n]||0)); }
+  function prox(t){ var g=pd(t.fechaIngreso); if(!g)return null; var a=anios(t); var z=new Date(g); z.setFullYear(g.getFullYear()+a+1); return z; }
+  function proxDias(t){ var z=prox(t); if(!z)return null; return Math.round((z-new Date())/86400000); }
+  var MESES={enero:1,febrero:2,marzo:3,abril:4,mayo:5,junio:6,julio:7,agosto:8,septiembre:9,setiembre:9,octubre:10,noviembre:11,diciembre:12};
+  function parseVence(txt){ if(!txt)return null; var m=String(txt).toLowerCase().match(/vencer[^a-z0-9]+([a-z]+)[^0-9]*(\d{4})/); if(!m)return null; var mo=MESES[m[1]]; if(!mo)return null; return new Date(+m[2],mo-1,1); }
+  function venceDate(t){ var best=null; recs(t.id).forEach(function(v){ if(v.venceHint){ var d=pd(v.venceHint); if(d&&(!best||d>best))best=d; } }); if(best)return best; var g=pd(t.fechaIngreso); if(!g)return null; var d=new Date(g); d.setFullYear(g.getFullYear()+anios(t)); return d; }
+  function vencidasDias(t){ return Math.max(0, saldo(t)); }
+  function salDia(t){ return (+t.bonoMensualUSD||0)/30; }
+  function rec(tId,n){ return ((DBok()&&DB.vacaciones)||[]).filter(function(v){return String(v.tId)===String(tId)&&+v.n===+n;})[0]||null; }
+  function recEnsure(tId,n){ var r=rec(tId,n); if(!r){ r={id:(typeof uid==='function'?uid():'v'+Date.now()+Math.random().toString(36).slice(2,6)),tId:String(tId),n:+n,disfrutes:[],pagado:false,fechaPago:'',monto:0,obs:''}; DB.vacaciones.push(r); } return r; }
+
+  window.vacDiasEnPeriodo=function(t,p){ if(!t||!p)return 0; try{ var ini=new Date(p.anio,(p.mes||1)-1,p.desde||1), fin=new Date(p.anio,(p.mes||1)-1,p.hasta||28); var tot=0; recs(t.id).forEach(function(v){ (v.disfrutes||[]).forEach(function(x){ var a=pd(x.desde),b=pd(x.hasta); if(!a||!b)return; var lo=a>ini?a:ini, hi=b<fin?b:fin; if(lo<=hi)tot+=habiles(lo,hi); }); }); return tot; }catch(e){ return 0; } };
+  /* pago de vacaciones que cae en la quincena: períodos pagados con fecha de pago dentro del período */
+  window.vacPagoEnPeriodo=function(t,p){ if(!t||!p)return 0; try{ var ini=new Date(p.anio,(p.mes||1)-1,p.desde||1), fin=new Date(p.anio,(p.mes||1)-1,p.hasta||28); var tot=0; recs(t.id).forEach(function(v){ if(v.pagoEstado!=='cobra')return; var f=pd(v.pagoFecha); if(!f)return; if(f>=ini&&f<=fin)tot+=(+v.monto||0); }); return tot; }catch(e){ return 0; } };
+
+  function trabAct(){ try{ return (typeof activos==='function'?activos():((DBok()&&DB.trabajadores)||[])).filter(function(t){return t.tipo!=='CONTRATISTA';}); }catch(e){ return []; } }
+  function money(x){ return 'USD '+(+x||0).toLocaleString('es-VE',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+  function ff(x){ var s=ymd(x); if(!s)return '—'; var p=s.split('-'); return p.length===3?(p[2]+'-'+p[1]+'-'+p[0]):s; }
+  function esc2(x){ try{ return (typeof esc==='function')?esc(x):String(x==null?'':x); }catch(e){ return String(x==null?'':x); } }
+  function digits(x){ return String(x||'').replace(/\D/g,'').replace(/^0+/,''); }
+  function norm(x){ return String(x||'').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,' ').trim(); }
+  function toks(x){ return norm(x).split(' ').filter(function(w){return w.length>1;}); }
+  function nameMatch(a,b){ var A=toks(a),B=toks(b); if(!A.length||!B.length)return false; var sb={}; B.forEach(function(w){sb[w]=1;}); var inter=A.filter(function(w){return sb[w];}).length; if(inter===A.length||inter===B.length)return true; return inter>=Math.min(3,Math.min(A.length,B.length)); }
+  function matchTrab(w){ var T=(DBok()&&DB.trabajadores)||[]; var cd=digits(w.cedDigits||w.cedula); if(cd){ var t=T.filter(function(x){return digits(x.cedula)===cd;})[0]; if(t)return t; } var bn=T.filter(function(x){return nameMatch(x.nombre,w.nombre);}); return bn[0]||null; }
+
+  window.vacImportar=function(){
+    if(!(DBok()))return; if(!DB.vacaciones)DB.vacaciones=[];
+    var isAdm=(typeof Auth==='undefined')||(Auth.esAdmin&&Auth.esAdmin())||(Auth.rol&&Auth.rol()==='admin')||(Auth.puedeEscribir&&Auth.puedeEscribir());
+    if(!isAdm){ if(typeof toast==='function')toast('Solo un administrador puede importar','err'); return; }
+    if(!confirm('¿Importar el histórico de vacaciones del Excel? Se agregan disfrutes y estatus de pago a los trabajadores que coincidan por cédula o nombre. Es idempotente (no duplica).'))return;
+    var H=window.__VAC_HIST||[]; var okW=0,okP=0,miss=[],matched=[];
+    H.forEach(function(w){ var t=matchTrab(w); if(!t){ miss.push(w.nombre); return; } okW++; var pc=0;
+      (w.periodos||[]).forEach(function(pp){ if(pp.n==null)return; var r=recEnsure(t.id,pp.n);
+        var vh=parseVence((pp.obs||'')+' '+(pp.fechas||'')); if(vh){ r.venceHint=vh.getFullYear()+'-'+String(vh.getMonth()+1).padStart(2,'0')+'-01'; }
+        if(pp.pagada===true&&!r.pagoEstado)r.pagoEstado='ya_pagada';
+        if(pp.obs&&!r.obs)r.obs=pp.obs;
+        if(!r._migHist){ r._migHist=true; if(pp.disfrutados&&pp.disfrutados>0){ r.disfrutes.push({desde:'',hasta:'',dias:pp.disfrutados,obs:((pp.fechas||'')+(pp.obs?(' · '+pp.obs):'')).trim(),_hist:true}); pc++; } }
+        okP++; });
+      matched.push('• '+w.nombre+' → '+((t.nombre||'')+' (#'+(t.no||'?')+') · '+pc+' per.')); });
+    DB.vacMigrado=(DB.vacMigrado||0)+1; if(typeof save==='function')save(); if(typeof render==='function')render();
+    var msg='Importación de histórico\n\nEmparejados: '+okW+' de '+H.length+'  ·  Períodos cargados: '+okP+'\n\n'+(matched.join('\n')||'(ninguno)');
+    if(miss.length)msg+='\n\nSIN EMPAREJAR ('+miss.length+') — revisa cédula/nombre en Maestro de Personal:\n- '+miss.join('\n- ');
+    alert(msg);
+  };
+  window.vVacaciones=function(){
+    var A=trabAct();
+    var totPend=A.reduce(function(s,t){return s+saldo(t);},0);
+    var hoy=new Date();
+    var enVac=A.filter(function(t){ return recs(t.id).some(function(v){return (v.disfrutes||[]).some(function(x){ var a=pd(x.desde),b=pd(x.hasta); return a&&b&&a<=hoy&&hoy<=b; });}); }).length;
+    var prox60=A.filter(function(t){var d=proxDias(t);return d!=null&&d>=0&&d<=60;}).length;
+    var kpi=function(v,l,cl){return '<div class="kpi'+(cl?' '+cl:'')+'"><div class="lbl">'+l+'</div><div class="val">'+v+'</div></div>';};
+    var admin=(typeof Auth!=='undefined'&&Auth.esAdmin&&Auth.esAdmin());
+    var rows=A.map(function(t){ var a=anios(t), c=causado(t), df=disfDe(t.id), sd=saldo(t); var vd=vencidasDias(t); var pdd=proxDias(t); var pv=prox(t);
+      var pcol=sd>0?'var(--bad)':'var(--ok,#0a8f5b)';
+      var _vns=vestedNs(t), _nxt=(_vns.length?_vns[_vns.length-1]:anios(t))+1;
+      var proxTxt=(pv?ff(pv):'—')+(pdd!=null&&pdd>=0&&pdd<=60?' <span class="pill warnp">'+pdd+'d</span>':'');
+      return '<tr><td class="num">'+esc2(t.no)+'</td><td class="tx">'+esc2(t.nombre)+'</td><td style="font-size:11.5px">'+ff(t.fechaIngreso)+'</td>'
+        +'<td class="ctr">'+a+'</td><td class="ctr">'+c+'</td><td class="ctr">'+df+'</td>'
+        +'<td class="ctr"><b style="color:'+pcol+'">'+sd+'</b>'+'</td>'
+        +'<td class="ctr" title="Derecho del pr\u00f3ximo per\u00edodo por causar">+'+ent(_nxt)+'</td>'
+        +'<td style="font-size:11.5px">'+proxTxt+'</td>'
+        +'<td><button class="btn sm p" onclick="verVacaciones(\''+t.id+'\')">Gestionar</button></td></tr>'; }).join('');
+    return '<div class="note">BETA v2 · <b>LOTTT Art. 190</b>: 15 días hábiles al 1er año, +1 por año, tope 30 · <b>Saldo</b> = causados − disfrutados · Días hábiles excluyen sáb/dom y <b>feriados de Venezuela</b> · El transporte y el pago se integran a la quincena.</div>'
+      +'<div class="bar" style="margin-bottom:12px"><div class="sp"></div>'
+      +(admin?'<button class="btn" onclick="vacImportar()" title="Importar el histórico del Excel">⤓ Importar histórico</button> ':'')
+      +'<button class="btn" onclick="pdfVista(\'Control de Vacaciones · LOTTT\')">↓ PDF</button></div>'
+      +'<div class="grid g4" style="margin-bottom:14px">'+kpi(A.length,'Trabajadores')+kpi(totPend,'Días pendientes (total)')+kpi(enVac,'De vacaciones hoy')+'</div>'
+      +'<div class="grid g4" style="margin-bottom:14px">'+kpi(prox60,'Vencen ≤ 60 días')+kpi(A.filter(function(t){var mr=maxRecN(t.id);return mr>0&&anios(t)>mr;}).length,'Períodos por causar')+'</div>'
+      +'<div class="tblwrap"><table class="dense"><thead><tr><th class="num">#</th><th>Trabajador</th><th>Ingreso</th><th class="ctr">Años</th><th class="ctr">Causados</th><th class="ctr">Disfrut.</th><th class="ctr">Pendiente</th><th class="ctr">Por causar</th><th>Próx. vence</th><th></th></tr></thead><tbody>'
+      +(rows||'<tr><td colspan="10" style="text-align:center;color:var(--txt3);padding:24px">Sin trabajadores</td></tr>')+'</tbody></table></div>';
+  };
+
+  window.verVacaciones=function(id){
+    var t=((DBok()&&DB.trabajadores)||[]).filter(function(x){return String(x.id)===String(id);})[0]; if(!t){ if(typeof toast==='function')toast('Trabajador no encontrado','err'); return; }
+    var a=anios(t), sd=salDia(t), g=pd(t.fechaIngreso), now=new Date(), hasRecs=recs(id).length>0, maxN=Math.max(a,maxRecN(id));
+    var pers=[]; for(var n=1;n<=maxN+1;n++){ var ini=new Date(g); ini.setFullYear(g.getFullYear()+(n-1)); var fin=new Date(g); fin.setFullYear(g.getFullYear()+n);
+      var vd=vestDate(g,n), annVen=!!(vd&&now>=vd), regVen=annVen&&!!rec(id,n);
+      pers.push({n:n,label:String(ini.getFullYear()).slice(2)+'-'+String(fin.getFullYear()).slice(2),ent:ent(n),ven:(hasRecs?regVen:annVen),sel:annVen,r:rec(id,n)}); }
+    var opts=pers.filter(function(x){return x.sel;}).map(function(x){return '<option value="'+x.n+'">Período '+x.n+' ('+x.label+') · derecho '+x.ent+'</option>';}).join('');
+    var body='<div class="note" style="margin-bottom:10px">Ingreso <b>'+ff(t.fechaIngreso)+'</b> · Antigüedad <b>'+a+' año(s)</b> · Causados <b>'+causado(t)+'</b> · Disfrutados <b>'+disfDe(id)+'</b> · <b style="color:var(--acc)">Saldo '+saldo(t)+' días</b>'+' · Salario diario '+money(sd)+'</div>';
+    body+='<div class="f" style="background:#f6f8fd;border:1px solid #e6ecf7;border-radius:10px;padding:10px;margin-bottom:12px"><b style="font-size:12px">Registrar disfrute</b>'
+      +'<div class="grid g4" style="margin-top:6px">'
+      +'<div class="f"><label>Período <span id="vacHint" style="color:#0a6b48;font-weight:700"></span></label><select id="vacN" onchange="vacHintN(\''+id+'\')">'+opts+'</select></div>'
+      +'<div class="f"><label>Desde</label><input id="vacD" type="date"></div>'
+      +'<div class="f"><label>Hasta</label><input id="vacH" type="date"></div>'
+      +'<div class="f"><label>Días hábiles</label><input id="vacDias" type="number" min="0" placeholder="auto"></div></div>'
+      +'<div class="f"><label>Observación</label><input id="vacObs" placeholder="Ej. 1) 2/05 al 23/05 Tomó 15 días"></div>'
+      +'<div class="grid g2" style="margin-top:6px"><div class="f"><label>Pago de estas vacaciones</label><select id="vacPago"><option value="">\u2014 Definir luego \u2014</option><option value="cobra">Cobrar en n\u00f3mina (quincena de salida)</option><option value="ya_pagada">Ya pagada \u00b7 solo transporte</option></select></div>'
+      +'<div class="f"><label>Fecha de pago (si cobra; por defecto la salida)</label><input id="vacPagoFecha" type="date"></div></div>'
+      +'<div style="text-align:right;margin-top:8px"><button class="btn" onclick="vacPdfTrab(\''+id+'\')">↓ Constancia PDF</button> <button class="btn p" onclick="vacGuardarDisfrute(\''+id+'\')">+ Agregar disfrute</button></div></div>';
+    body+='<div class="tblwrap"><table class="dense"><thead><tr><th class="ctr">Año</th><th>Período</th><th class="ctr">Derecho</th><th class="ctr">Disfrut.</th><th>Fechas de disfrute</th><th class="num">Bono vac.</th><th>Pago</th><th class="num">Monto USD</th><th></th></tr></thead><tbody>';
+    pers.forEach(function(x){ var r=x.r; var dd=(r&&r.disfrutes)||[]; var rawtot=dd.reduce(function(s,y){return s+(+y.dias||0);},0);
+      var cons=x.ven?fifoConsumido(t,x.n):0; var pend=x.ven?fifoRest(t,x.n):0;
+      var bono=x.ent*sd; var pagoSug=(cons*sd)+bono;
+      var fechas=dd.length?dd.map(function(y,ix){return '<div>'+(y.desde?ff(y.desde)+' → '+ff(y.hasta):'<span style="color:var(--txt2)">'+(+y.dias||0)+' d</span>')+(y.obs?' · '+esc2(y.obs):'')+' <a onclick="vacDelDisfrute(\''+id+'\','+x.n+','+ix+')" style="color:var(--bad);cursor:pointer" title="Eliminar">✕</a></div>';}).join(''):'<span style="color:var(--txt3)">—</span>';
+      var pe=(r&&r.pagoEstado)||((r&&r.pagado)?'ya_pagada':'pendiente');
+      var bg=pe==='ya_pagada'?'background:#eafaf1':(pe==='cobra'?'background:#fff6e5':'');
+      var rowSty=(x.ven?'':'opacity:.55;')+bg;
+      var badges=''; if(pe==='ya_pagada')badges+=' <span class="vpill vok">✓ pagada</span>'; else if(pe==='cobra')badges+=' <span class="vpill vwar">a cobrar</span>'; if(pend>0)badges+=' <span class="vpill vbad">pend '+pend+'d</span>';
+      body+='<tr'+(rowSty?' style="'+rowSty+'"':'')+'><td class="ctr">'+x.n+'</td><td>'+x.label+(x.ven?'':' · <span class="sub2">no vencido</span>')+badges+'</td><td class="ctr">'+x.ent+'</td><td class="ctr">'+cons+'</td><td style="font-size:11px">'+fechas+'</td>'
+        +'<td class="num" title="Bono vacacional sugerido">'+money(bono)+'</td>'
+        +'<td><select onchange="vacSetPagoEstado(\''+id+'\','+x.n+',this.value)" style="font-size:11px;width:112px"><option value="pendiente"'+(pe==='pendiente'?' selected':'')+'>Pendiente</option><option value="cobra"'+(pe==='cobra'?' selected':'')+'>Cobrar</option><option value="ya_pagada"'+(pe==='ya_pagada'?' selected':'')+'>Ya pagada</option></select>'+(pe==='cobra'?'<br><input type="date" value="'+((r&&r.pagoFecha)||'')+'" onchange="vacSetPagoFecha(\''+id+'\','+x.n+',this.value)" style="width:122px;margin-top:3px" title="Quincena a cobrar">':'')+'</td>'
+        +'<td class="num"><input type="number" step="0.01" value="'+((r&&r.monto)||'')+'" placeholder="'+pagoSug.toFixed(2)+'" onchange="vacSetMonto(\''+id+'\','+x.n+',this.value)" style="width:100px" '+(pe==='cobra'?'':'disabled')+' title="Sugerido: '+money(pagoSug)+'"></td>'
+        +'<td>'+((rawtot||(r&&r.pagado))?'<button class="btn sm" onclick="vacObsPeriodo(\''+id+'\','+x.n+')" title="Observación">✎</button>':'')+'</td></tr>'; });
+    body+='</tbody></table></div><p style="font-size:11px;color:#6b7794;margin-top:8px">Pago sugerido (LOTTT) = salario de días disfrutados + <b>bono vacacional</b> del período (15 días 1er año, +1/año, tope 30) × salario diario. Al marcar <b>Pagada</b> con monto, el pago se integra a la quincena cuya fecha contenga la fecha de pago (hoy).</p>';
+    if(typeof modal==='function') modal('Vacaciones · '+esc2(t.nombre), '<div class="vacMdl">'+body+'</div>');
+    setTimeout(function(){ try{ vacHintN(id); }catch(e){} },30);
+  };
+  window.vacHintN=function(id){ var el=document.getElementById('vacHint'); if(!el)return; var t=((DBok()&&DB.trabajadores)||[]).filter(function(x){return String(x.id)===String(id);})[0]; if(!t){el.textContent='';return;} el.textContent='· saldo disponible '+saldo(t)+' d'; };
+
+  window.vacGuardarDisfrute=function(id){ var n=+(document.getElementById('vacN')||{}).value; var D=(document.getElementById('vacD')||{}).value, H=(document.getElementById('vacH')||{}).value; var diasIn=(document.getElementById('vacDias')||{}).value; var obs=((document.getElementById('vacObs')||{}).value||'').trim();
+    if(!n){ toast&&toast('Selecciona el período','err'); return; } if(!D||!H){ toast&&toast('Indica desde y hasta','err'); return; }
+    var dias=diasIn?(+diasIn):habiles(D,H); if(!(dias>0)){ toast&&toast('Días inválidos','err'); return; }
+    var _tt=((DBok()&&DB.trabajadores)||[]).filter(function(x){return String(x.id)===String(id);})[0];
+    var rest=_tt?saldo(_tt):ent(n);
+    if(dias>rest){ toast&&toast('Excede el saldo disponible: quedan '+rest+' d y este disfrute pide '+dias+' d.','err'); return; }
+    var r=recEnsure(id,n); r.disfrutes.push({desde:D,hasta:H,dias:dias,obs:obs});
+    var pe=(document.getElementById('vacPago')||{}).value, pf=(document.getElementById('vacPagoFecha')||{}).value;
+    var _t=((DBok()&&DB.trabajadores)||[]).filter(function(x){return String(x.id)===String(id);})[0];
+    if(pe==='cobra'){ r.pagoEstado='cobra'; r.pagoFecha=pf||D; if(_t)r.monto=+(((disfPeriodo(id,n)+ent(n))*salDia(_t)).toFixed(2)); }
+    else if(pe==='ya_pagada'){ r.pagoEstado='ya_pagada'; }
+    if(typeof save==='function')save(); toast&&toast('Disfrute registrado ('+dias+' días hábiles)'+(pe==='cobra'?' · pago cargado a la quincena de salida':'')); verVacaciones(id); };
+  window.vacDelDisfrute=function(id,n,ix){ var r=rec(id,n); if(!r)return; if(!confirm('¿Eliminar este disfrute?'))return; r.disfrutes.splice(ix,1); if(typeof save==='function')save(); verVacaciones(id); };
+  window.vacSetPagoEstado=function(id,n,val){ var r=recEnsure(id,n); r.pagoEstado=val||'pendiente'; if(val==='cobra'){ if(!r.pagoFecha){ var d0=(r.disfrutes&&r.disfrutes[0]&&r.disfrutes[0].desde)||''; r.pagoFecha=d0||(typeof hoy==='function'?hoy():ymd(new Date())); } if(!(+r.monto)){ var t=((DBok()&&DB.trabajadores)||[]).filter(function(x){return String(x.id)===String(id);})[0]; if(t)r.monto=+(((disfPeriodo(id,n)+ent(n))*salDia(t)).toFixed(2)); } } if(typeof save==='function')save(); verVacaciones(id); };
+  window.vacSetPagoFecha=function(id,n,val){ var r=recEnsure(id,n); r.pagoFecha=val||''; if(typeof save==='function')save(); };
+  window.vacSetMonto=function(id,n,val){ var r=recEnsure(id,n); r.monto=+val||0; if(typeof save==='function')save(); };
+  window.vacObsPeriodo=function(id,n){ var r=recEnsure(id,n); var o=prompt('Observación del período', r.obs||''); if(o===null)return; r.obs=o; if(typeof save==='function')save(); verVacaciones(id); };
+
+  /* ---- Constancia PDF por trabajador ---- */
+  window.vacPdfTrab=function(id){ var t=((DBok()&&DB.trabajadores)||[]).filter(function(x){return String(x.id)===String(id);})[0]; if(!t)return;
+    var a=anios(t), g=pd(t.fechaIngreso), sd=salDia(t);
+    var css=(typeof PDF_CSS!=='undefined'?PDF_CSS:'@page{size:letter landscape;margin:12mm}body{font:12px Barlow,Arial,sans-serif;color:#10171E}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccd;padding:5px 7px}th{background:#E8EEF5}');
+    var logo=''; try{ logo=(document.querySelector('.brand img')||{}).src||''; }catch(e){}
+    var rowsH='';
+    for(var n=1;n<=a+1;n++){ var ini=new Date(g); ini.setFullYear(g.getFullYear()+(n-1)); var fin=new Date(g); fin.setFullYear(g.getFullYear()+n); var lbl=String(ini.getFullYear()).slice(2)+'-'+String(fin.getFullYear()).slice(2);
+      var r=rec(id,n); var dd=(r&&r.disfrutes)||[]; var cons=(n<=a)?fifoConsumido(t,n):0;
+      var fechas=dd.map(function(y){return (y.desde?ff(y.desde)+'→'+ff(y.hasta):(+y.dias||0)+'d')+(y.obs?' '+esc2(y.obs):'');}).join('; ')||'—';
+      var pe=(r&&r.pagoEstado)||((r&&r.pagado)?'ya_pagada':'pendiente'); var pagTxt=pe==='ya_pagada'?'Pagada':(pe==='cobra'?'A cobrar':'—');
+      rowsH+='<tr><td>'+n+'</td><td>'+lbl+(n<=a?'':' (no vencido)')+'</td><td style="text-align:center">'+ent(n)+'</td><td style="text-align:center">'+cons+'</td><td style="text-align:left">'+fechas+'</td><td>'+pagTxt+'</td></tr>'; }
+    var w=window.open('','_blank','width=1050,height=760'); if(!w){ toast&&toast('Permite ventanas emergentes para el PDF','err'); return; }
+    w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Constancia de Vacaciones</title><style>'+css+'</style></head><body>'
+      +'<div class="pdfhd"><div><h1>CONTROL DE VACACIONES</h1><h2>'+esc2(t.nombre)+'</h2></div>'+(logo?'<img class="pdflogo" src="'+logo+'">':'')+'</div>'
+      +'<p>Cédula: <b>'+esc2(t.cedula||'')+'</b> · Ingreso: <b>'+ff(t.fechaIngreso)+'</b> · Antigüedad: <b>'+a+' año(s)</b> · Causados: <b>'+causado(t)+'</b> · Disfrutados: <b>'+disfDe(id)+'</b> · Saldo: <b>'+saldo(t)+' días</b></p>'
+      +'<table><thead><tr><th>Año</th><th>Período</th><th>Derecho</th><th>Disfrut.</th><th>Fechas de disfrute</th><th>Pago</th></tr></thead><tbody>'+rowsH+'</tbody></table>'
+      +'<div style="margin-top:40px;display:flex;justify-content:space-between"><div style="border-top:1px solid #333;padding-top:4px;width:38%;text-align:center">TRABAJADOR</div><div style="border-top:1px solid #333;padding-top:4px;width:38%;text-align:center">RRHH</div></div>'
+      +'</body></html>'); w.document.close(); w.focus(); setTimeout(function(){ try{w.print();}catch(e){} },400); };
 })();
 </script>
 </body>
