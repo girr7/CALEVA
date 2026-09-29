@@ -1498,10 +1498,20 @@ function saldo(pr){ return Math.max(0, (+pr.montoTotal||0) - abonado(pr)) }
 function cuotaEnPeriodo(pr, p){
   if(pr.pagos && pr.pagos[p.id]!==undefined) return +pr.pagos[p.id]||0;  // ya registrada
   if(pr.estado!=='activo') return 0;
+  const s=saldo(pr); if(s<=0) return 0;
+  // Monto MANUAL para este período (abono parcial): prevalece sobre la cuota programada, tope = saldo
+  if(pr.override && pr.override[p.id]!==undefined) return Math.min(Math.max(0,+pr.override[p.id]||0), s);
   var _ini=(pr.desde&&String(pr.desde))||pr.fecha; var _pd=(p.fechaPagoReal||p.fechaPagoPrevista);
   if(_ini && _pd && _ini > _pd) return 0;
   if(pr.modalidad==='mensual' && p.quincena!==(pr.quincenaCobro||2)) return 0;
-  const s=saldo(pr); if(s<=0) return 0;
+  return Math.min(+pr.montoCuota||0, s);
+}
+/** Cuota PROGRAMADA (ignora el override) — usada para decidir cuándo quitar el override */
+function schedCuota(pr, p){
+  var s=saldo(pr); if(s<=0) return 0;
+  var _ini=(pr.desde&&String(pr.desde))||pr.fecha; var _pd=(p.fechaPagoReal||p.fechaPagoPrevista);
+  if(_ini && _pd && _ini > _pd) return 0;
+  if(pr.modalidad==='mensual' && p.quincena!==(pr.quincenaCobro||2)) return 0;
   return Math.min(+pr.montoCuota||0, s);
 }
 function cuotasDelTrabajador(tid, p){
@@ -1523,6 +1533,31 @@ function revertirCuotas(p){
     }
   });
 }
+/* Fija un monto MANUAL de cuota de préstamo para el trabajador en la quincena actual.
+   Con un solo préstamo activo, el monto va a ese; con varios, se reparte a prorrata de la
+   cuota programada. Si el monto iguala lo programado, se quita el override (vuelve a auto).
+   No toca el saldo hasta que el período se marca como pagado (ahí se registra en pr.pagos). */
+window.setPrestamoOverride=function(tid, val){
+  val=Math.max(0,+val||0);
+  var p=per();
+  var loans=prestamosDe(tid).filter(function(pr){ return pr.estado==='activo' && saldo(pr)>0 && !(pr.pagos && pr.pagos[p.id]!==undefined); });
+  if(!loans.length){ if(typeof toast==='function')toast('Sin préstamo activo para ajustar en esta quincena','err'); if(typeof render==='function')render(); return; }
+  var totSaldo=loans.reduce(function(a,pr){return a+saldo(pr);},0);
+  if(val>totSaldo) val=Math.round(totSaldo*100)/100;   // no puede exceder lo adeudado
+  if(loans.length===1){
+    var pr=loans[0]; pr.override=pr.override||{};
+    if(Math.abs(val - schedCuota(pr,p))<0.005) delete pr.override[p.id];
+    else pr.override[p.id]=Math.round(val*100)/100;
+    if(pr.override && !Object.keys(pr.override).length) delete pr.override;
+  } else {
+    var totSched=loans.reduce(function(a,pr){return a+schedCuota(pr,p);},0), rest=val;
+    loans.forEach(function(pr,i){ pr.override=pr.override||{};
+      var share=(i===loans.length-1)? rest : (totSched>0? Math.round(val*(schedCuota(pr,p)/totSched)*100)/100 : Math.round(val/loans.length*100)/100);
+      share=Math.min(Math.max(0,share), saldo(pr)); pr.override[p.id]=share; rest=Math.round((rest-share)*100)/100; });
+  }
+  if(typeof save==='function')save();
+  if(typeof render==='function')render();
+};
 
 /* ═══════════ MOTOR DE CÁLCULO ═══════════ */
 function activos(){ return DB.trabajadores.filter(t=>t.estado==='activo').sort((a,b)=>a.no-b.no) }
@@ -1540,6 +1575,10 @@ function calcPeriodo(pid){
     /* PRÉSTAMOS — cuotas automáticas de este período */
     const cuotas = cuotasDelTrabajador(t.id, p);
     const pr_auto = cuotas.reduce((a,x)=>a+x.cuota,0);
+    const _prs = prestamosDe(t.id);
+    const prestamoActivo = _prs.some(pr=>pr.estado==='activo' && saldo(pr)>0);
+    const prestamoRegistrado = _prs.some(pr=>pr.pagos && pr.pagos[p.id]!==undefined);
+    const prestamoOverride = _prs.some(pr=>pr.override && pr.override[p.id]!==undefined);
 
     /* NÓMINA BÁSICA — solo LOTTT */
     const nb_ticketBs = esL? ticketAlimBs : 0;
@@ -1594,7 +1633,7 @@ function calcPeriodo(pid){
     const vac_pagoUSD = (typeof vacPagoEnPeriodo==='function') ? vacPagoEnPeriodo(t,p) : 0;
     const vac_pagoBs  = vac_pagoUSD*tasa;
     const vacDias = (typeof vacDiasEnPeriodo==='function') ? vacDiasEnPeriodo(t,p) : 0;
-    return {t,L,faltas,faltasT,base,esL,esC,suspendido,noAplicaTransporte,sinTransporte,modo,cuotas,pr_auto,vac_pagoUSD,vac_pagoBs,vacDias,
+    return {t,L,faltas,faltasT,base,esL,esC,suspendido,noAplicaTransporte,sinTransporte,modo,cuotas,pr_auto,prestamoActivo,prestamoRegistrado,prestamoOverride,vac_pagoUSD,vac_pagoBs,vacDias,
       nb_ticketBs,nb_descBs,nb_netoBs,nb_sueldoBs,nb_totalBs,
       bt_mensUSD,bt_quinUSD,bt_porFalta,bt_descUSD,bt_netoUSD,bt_netoBs,
       bp_acordUSD,bp_quinUSD,bp_costoDia,bp_extraUSD,bp_descUSD,bp_vac,bp_uti,bp_prod,
@@ -1979,7 +2018,11 @@ function vQuincena(){
       <td class="num"><input type="number" min="0" step="0.01" value="${f.L.bonoProduccion||0}" ${ro} onchange="setL('${f.t.id}','bonoProduccion',this.value)" title="Bono de producción — pago único, no depende de días trabajados"></td>
       ${qDet?`<td class="num"><input type="number" min="0" step="0.01" value="${f.L.vacaciones||0}" ${ro} onchange="setL('${f.t.id}','vacaciones',this.value)"></td>
        <td class="num"><input type="number" min="0" step="0.01" value="${f.L.utilidades||0}" ${ro} onchange="setL('${f.t.id}','utilidades',this.value)"></td>`:''}
-      <td class="num gl" style="color:${f.pr_auto?'var(--bad)':'var(--txt3)'}" title="${f.cuotas.map(x=>esc(x.pr.descripcion||'Préstamo')+': '+fUsd(x.cuota)).join(' · ')}">${f.pr_auto?'−'+fN(f.pr_auto):'—'}</td>
+      <td class="num gl">${f.prestamoActivo
+        ? (f.prestamoRegistrado
+            ? `<span style="color:var(--bad)" title="Cuota ya registrada (período marcado como pagado)">${f.pr_auto?'−'+fN(f.pr_auto):'—'}</span>`
+            : `<input type="number" min="0" step="0.01" value="${(+f.pr_auto||0).toFixed(2)}" ${ro} onchange="setPrestamoOverride('${f.t.id}',this.value)" title="Cuota de préstamo de esta quincena (editable). Escribe un monto menor para abono parcial: el saldo baja por lo pagado y las próximas cuotas siguen igual.${f.prestamoOverride?' — MONTO MANUAL':''}" style="width:76px;color:var(--bad)${f.prestamoOverride?';font-weight:700;background:#fff6e5;border-color:#f0cf8a':''}">`)
+        : '<span style="color:var(--txt3)">—</span>'}</td>
       <td class="num"><input type="number" min="0" step="0.01" value="${f.L.prestamos||0}" ${ro} onchange="setL('${f.t.id}','prestamos',this.value)"></td>
       <td class="num gl" style="color:${f.nb_totalBs?'inherit':'var(--txt3)'}">${f.nb_totalBs?fBs(f.nb_totalBs):'—'}</td>
       <td class="num" style="color:${f.bp_totalUSD<0?'var(--bad)':'inherit'}">${fN(f.bp_totalUSD)}</td>
