@@ -461,7 +461,7 @@ document.querySelector('#workList').innerHTML=state.dashboard.map(p=>`<div class
 document.querySelector('#queue').innerHTML=state.candidates.map(c=>{let pdf=(c.evidence_path||'').toLowerCase().endsWith('.pdf'),viewer=c.evidence_path?(pdf?`<iframe title="PDF evidencia" src="/api/candidates/${c.id}/evidence"></iframe>`:`<img alt="Evidencia" src="/api/candidates/${c.id}/evidence">`):`<div class=thumb>Captura #${c.id}<br><small>sin vista previa</small></div>`;return `<article class=candidate data-id=${c.id}><div class=evidence>${viewer}<small>Evidencia original preservada</small></div><div><div class=ocr-meta><b>${c.ocr_run_id?'Propuesta OCR':'Carga manual'}</b> · Confianza ${Math.round(c.confidence*100)}%${c.ocr_page_count?` · página ${c.ocr_selected_page||'-'} de ${c.ocr_page_count}`:''} · Estado <b>${c.status}</b></div><div class=fields><label>Proveedor<input name=supplier value="${esc(c.supplier)}"></label><label>Fecha<input name=expense_date type=date value="${esc(c.expense_date)}"></label><label>Monto<input name=amount type=number step=.01 value="${(c.amount_cents/100).toFixed(2)}"></label><label>Categoría<select name=category>${['mano_obra','servicios','otros'].map(x=>`<option ${x==c.category?'selected':''}>${x}</option>`)}</select></label><label style="grid-column:span 2">Concepto<input name=description value="${esc(c.description)}"></label></div><details><summary>Texto e historial OCR</summary><pre>${esc(c.ocr_text)}</pre><button onclick="showOcrHistory(${c.id})">Ver ejecuciones</button><div id="history-${c.id}"></div></details></div><div class=actions>${c.evidence_path?`<button onclick="reprocess(${c.id})">Reprocesar OCR</button>`:''}${c.status==='pendiente'?`<button class=primary onclick="review(${c.id},'aprobado')">Aprobar</button><button class=reject onclick="review(${c.id},'rechazado')">Rechazar</button>`:'Revisado'}</div></article>`}).join('');
 state.candidates.forEach(c=>{let card=document.querySelector(`[data-id="${c.id}"]`);card?.insertAdjacentHTML('afterbegin',`<label class=select-card><input type=checkbox class=bulk-check value="${c.id}"> Seleccionar</label>`);if(card&&c.status!=='aprobado')card.querySelector('.actions')?.insertAdjacentHTML('beforeend',`<button class=delete-expense onclick="deleteExpense(${c.id})">Eliminar gasto</button>`)});
 state.candidates.forEach(c=>{let fields={};try{fields=JSON.parse(c.ocr_fields_json||'{}')}catch(e){}if(!Object.keys(fields).length)return;let card=document.querySelector(`[data-id="${c.id}"]`),meta=card?.querySelector('.ocr-meta');if(!meta)return;meta.insertAdjacentHTML('afterend',`<div class=proposal><b>Datos detectados:</b> ${fields.supplier?`Proveedor: ${esc(fields.supplier)} · `:''}${fields.expense_date?`Fecha: ${esc(fields.expense_date)} · `:''}${fields.amount!=null?`Monto: ${esc(fields.amount)} · `:''}${fields.description?`Concepto: ${esc(fields.description)}`:''}<button onclick="applyOcr(${c.id})">Aplicar propuestas</button></div>`)});filterQueue();
-document.querySelector('#auditRows').innerHTML=state.audit.map(a=>{let detail='';try{let after=JSON.parse(a.after_json||'{}');detail=after.reason||after.file||auditLabel(after.status)||after.code||''}catch(e){}return `<tr><td>${new Date(a.created_at).toLocaleString('es-VE')}</td><td><span class=audit-action>${esc(auditLabel(a.action))}</span></td><td>${esc(auditLabel(a.entity_type))}${(function(){try{if(a.entity_type==='project'){var p=(state.dashboard||[]).find(x=>x.id===a.entity_id);return p&&(p.code||p.order_number)?' · '+esc(p.code||p.order_number):'';}if(a.entity_type==='expense_candidate'){var e=(state.candidates||[]).find(x=>x.id===a.entity_id);return e?' · '+esc(e.supplier||e.description||''):'';}}catch(_){}return '';})()}</td><td>${esc(a.actor)}</td><td title="${esc(detail)}">${esc(detail)||'—'}</td></tr>`}).join('')}
+document.querySelector('#auditRows').innerHTML=state.audit.map(a=>{let detail='';try{let after=JSON.parse(a.after_json||'{}');detail=after.reason||after.file||auditLabel(after.status)||after.code||''}catch(e){}return `<tr><td>${(function(d){if(isNaN(d))return '';var z=n=>String(n).padStart(2,'0'),h=d.getHours();return z(d.getDate())+'-'+z(d.getMonth()+1)+'-'+d.getFullYear()+' '+z(h%12||12)+':'+z(d.getMinutes())+(h<12?' a. m.':' p. m.')})(new Date(a.created_at))}</td><td><span class=audit-action>${esc(auditLabel(a.action))}</span></td><td>${esc(auditLabel(a.entity_type))}${(function(){try{if(a.entity_type==='project'){var p=(state.dashboard||[]).find(x=>x.id===a.entity_id);return p&&(p.code||p.order_number)?' · '+esc(p.code||p.order_number):'';}if(a.entity_type==='expense_candidate'){var e=(state.candidates||[]).find(x=>x.id===a.entity_id);return e?' · '+esc(e.supplier||e.description||''):'';}}catch(_){}return '';})()}</td><td>${esc(a.actor)}</td><td title="${esc(detail)}">${esc(detail)||'—'}</td></tr>`}).join('')}
 function auditLabel(value){return ({review:'Revisión',bulk_category:'Categoría masiva',bulk_supplier:'Proveedor masivo',ocr_reprocess:'OCR reprocesado',create:'Creación',soft_delete:'Eliminación',manual_create:'Carga manual',excel_import:'Importación Excel',import_xlsx:'Importación materiales',close_mensual:'Cierre mensual',close_final:'Cierre definitivo',backup_restore:'Restauración',expense_candidate:'Gasto',ocr_run:'Ejecución OCR',material_item:'Material',project:'Obra',aprobado:'Aprobado',rechazado:'Rechazado',pendiente:'Pendiente'})[value]||String(value||'').replaceAll('_',' ')}
 async function review(id,status,confirm_duplicate=false){let el=document.querySelector(`[data-id="${id}"]`),payload={status,confirm_duplicate};el.querySelectorAll('[name]').forEach(x=>payload[x.name]=x.value);try{await api(`/api/candidates/${id}/review`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});toast('Revisión guardada');loadAll()}catch(e){if(e.message.includes('Posible duplicado')&&confirm(e.message+'\n¿Aprobar de todos modos?'))return review(id,status,true);toast(e.message)}}
 async function reprocess(id){try{toast('Procesando evidencia…');let r=await api(`/api/candidates/${id}/reprocess`,{method:'POST'});toast(`OCR terminado: ${Math.round(r.confidence*100)}% · página ${r.selected_page||'-'}`);loadAll()}catch(e){toast(e.message)}}
@@ -600,18 +600,53 @@ function sbUpsert(table,row,conflict){ return fetch(rest(table+'?on_conflict='+c
 function sbRpc(name,args){ return fetch(rest('rpc/'+name),{method:'POST',headers:hdr(),body:JSON.stringify(args||{})}).then(function(r){ return r.ok?r.json():r.json().then(function(e){throw Error(e.message||e.hint||('Error '+r.status));}); }); }
 function audit(entity,eid,action,after){ if(!Auth.puedeEscribir())return Promise.resolve(); return sbRpc('obra_audit_write',{p_entity:entity,p_id:(eid==null?null:eid),p_action:action,p_after:Object.assign({},after||{})}).catch(function(e){ try{console.warn('[auditoría] no se registró:',(e&&e.message)||e);}catch(_){} }); }
 function needWrite(){ if(!Auth.puedeEscribir())throw Error('Su rol no permite modificar (solo lectura).'); }
-/* Resumen legible de "qué se hizo" (anterior → nuevo) para la trazabilidad */
-function humanDetail(ad,bd){ if(!ad||typeof ad!=='object')return '';
-  if(ad.reason)return String(ad.reason); if(ad.motivo)return String(ad.motivo);
-  bd=bd||{};
-  var L={estado:'Estado',status:'Estado',presupuesto:'Presupuesto',period:'Período',code:'Código',name:'Nombre',description:'Concepto',supplier:'Proveedor',category:'Categoría',price:'Precio',amount_cents:'Monto',ves_per_usd:'Tasa',rate_date:'Fecha tasa',n:'Cantidad',reabierto:'Reabierto'};
-  var order=['estado','status','presupuesto','category','supplier','description','name','code','period','price','amount_cents','ves_per_usd','rate_date','n','reabierto'];
-  function fmt(k,v){ if(v==null||v==='')return null; if((k==='status'||k==='estado'||k==='category')&&typeof auditLabel==='function')v=auditLabel(v); if(k==='amount_cents'&&typeof money==='function')v=money(v); if(k==='reabierto')v='Sí'; return v; }
-  var parts=[]; order.forEach(function(k){ if(!(k in ad))return; var nv=fmt(k,ad[k]); if(nv==null)return;
+/* Resumen legible de "qué se hizo" (anterior → nuevo) para la trazabilidad.
+   Solo muestra lo que cambió; traduce campos, fechas (dd-mm-aaaa) y montos. */
+function humanDetail(ad,bd,act){ if(!ad||typeof ad!=='object')return '';
+  bd=bd||{}; act=act||'';
+  var MESES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  function fdate(v){ var s=String(v||''); var m=/^(\d{4})-(\d{2})-(\d{2})/.exec(s); return m?(m[3]+'-'+m[2]+'-'+m[1]):s; }
+  function fper(v){ var m=/^(\d{4})-(\d{2})$/.exec(String(v||'')); return m?(MESES[+m[2]-1]+' '+m[1]):String(v||''); }
+  function usd(cents){ return (typeof money==='function')?money(cents):('USD '+((cents||0)/100).toFixed(2)); }
+  function n2(v){ return Number(v||0).toLocaleString('es-VE',{maximumFractionDigits:4}); }
+  var L={estado:'Estado',status:'Estado',presupuesto:'Presupuesto',period:'Período',code:'Código',name:'Nombre',description:'Concepto',supplier:'Proveedor',category:'Categoría',price:'Precio unitario',amount_cents:'Monto',original_amount_cents:'Monto original',currency:'Moneda',exchange_rate:'Tasa de cambio',expense_date:'Fecha del gasto',ves_per_usd:'Tasa BCV',rate_date:'Fecha de la tasa',source:'Fuente',client:'Cliente',order_number:'N° de pedido',budget_cents:'Presupuesto'};
+  function fmt(k,v){ if(v==null||v==='')return null;
+    if((k==='status'||k==='estado'||k==='category')&&typeof auditLabel==='function')return auditLabel(v);
+    if(/_cents$/.test(k))return usd(v);
+    if(k==='expense_date'||k==='rate_date')return fdate(v);
+    if(k==='period')return fper(v);
+    if(k==='ves_per_usd'||k==='exchange_rate')return n2(v);
+    if(k==='price')return 'USD '+Number(v||0).toLocaleString('es-VE',{minimumFractionDigits:2,maximumFractionDigits:4});
+    return String(v); }
+  var parts=[];
+  /* Conteos de operaciones masivas / importaciones */
+  if(ad.n!=null&&Object.keys(ad).length<=2){ var nn=+ad.n||0;
+    if(act==='excel_import')return nn+' gasto(s) importado(s) desde Excel';
+    if(act==='import_xlsx')return nn+' material(es) importado(s) desde Excel';
+    if(act==='bulk_category')return 'Categoría cambiada a '+nn+' gasto(s)';
+    if(act==='bulk_supplier')return 'Proveedor cambiado a '+nn+' gasto(s)';
+    return nn+' registro(s)'; }
+  /* Cierres y reaperturas */
+  if(act==='close_mensual'){ var per=ad.period||bd.period;
+    if(ad.reabierto)return 'Período reabierto'+(per?(' · '+fper(per)):'')+(ad.motivo?(' · Motivo: '+ad.motivo):'');
+    return 'Cierre del mes'+(per?(' · '+fper(per)):''); }
+  if(act==='close_final'){ var nex=Array.isArray(ad.excepciones)?ad.excepciones.length:0;
+    if(ad.reabierto)return 'Obra reabierta'+(ad.motivo?(' · Motivo: '+ad.motivo):'');
+    return 'Obra finalizada'+(ad.motivo?(' · Motivo/acta: '+ad.motivo):'')+(nex?(' · '+nex+' excepción(es) pendientes'):''); }
+  /* Reversión de gasto */
+  if(act==='soft_delete'){ var why=ad.reversal_reason||ad.reason||ad.motivo; var amt=ad.amount_cents!=null?ad.amount_cents:bd.amount_cents;
+    return 'Gasto reversado'+(amt!=null?(' · '+usd(amt)):'')+(why?(' · Motivo: '+why):''); }
+  if(ad.reason)return String(ad.reason); if(ad.motivo)return 'Motivo: '+String(ad.motivo);
+  /* Cambios campo a campo: solo lo que cambió */
+  var order=['estado','status','presupuesto','budget_cents','category','supplier','description','expense_date','amount_cents','original_amount_cents','currency','exchange_rate','name','code','client','order_number','period','price','ves_per_usd','rate_date','source'];
+  var hayAntes=Object.keys(bd).some(function(k){return k!=='by';});
+  order.forEach(function(k){ if(!(k in ad))return; var nv=fmt(k,ad[k]); if(nv==null)return;
     var rawOld=(k+'_ant' in ad)?ad[k+'_ant']:(k in bd?bd[k]:undefined);
     var ov=(rawOld===undefined)?null:fmt(k,rawOld);
     if(ov!=null&&String(ov)!==String(nv))parts.push((L[k]||k)+': '+ov+' → '+nv);
-    else parts.push((L[k]||k)+': '+nv); });
+    else if(ov==null&&!(k+'_ant' in ad)&&(!hayAntes||rawOld===undefined))parts.push((L[k]||k)+': '+nv); });
+  /* Validación de un gasto sin otros cambios: dar contexto mínimo */
+  if(act==='review'&&ad.amount_cents!=null&&!parts.some(function(x){return /^Monto:/.test(x);}))parts.push('Monto: '+usd(ad.amount_cents));
   return parts.join(' · '); }
 /* Etiquetas de acción/entidad para la trazabilidad (extiende las de la app) */
 (function(){ var _al=window.auditLabel; var EX={update:'Actualización',create:'Creación',review:'Validación',soft_delete:'Anulación',manual_create:'Registro manual',bulk_category:'Categoría (masivo)',bulk_supplier:'Proveedor (masivo)',close_final:'Cierre definitivo',close_mensual:'Cierre mensual',exchange_rate:'Tasa BCV',evidencia:'Evidencia',expense_candidate:'Gasto',material_item:'Material',project:'Obra'};
@@ -674,7 +709,7 @@ function router(url,method,body){
   /* ---- AUDIT ---- */
   if(url==='/api/audit'){ return sbGet('obra_audit?select=*&order=created_at.desc&limit=250').then(function(rows){
       return rows.map(function(a){ var ad=a.after_data||{}, bd=a.before_data||{}; var who=(bd&&bd.by)||(ad&&ad.by)||a.actor||'';
-        return {created_at:a.created_at,action:a.action,entity_type:a.entity_type,entity_id:a.entity_id,actor:who,after_json:JSON.stringify({reason:humanDetail(ad,bd)})}; }); }); }
+        return {created_at:a.created_at,action:a.action,entity_type:a.entity_type,entity_id:a.entity_id,actor:who,after_json:JSON.stringify({reason:humanDetail(ad,bd,a.action)})}; }); }); }
   /* ---- RATES ---- */
   if(url==='/api/rates'&&method==='GET'){ return sbGet('obra_rates?select=*&order=rate_date.desc').then(function(rows){ return rows.map(function(r){return {rate_date:r.rate_date,ves_per_usd:Number(r.ves_per_usd),source:r.source};}); }); }
   if(url==='/api/suppliers'){ return Promise.all([sbGet('obra_expenses?select=supplier&supplier=neq.').catch(function(){return[];}),sbGet('obra_suppliers?select=name&active=is.true').catch(function(){return[];})]).then(function(a){ var s={}; (a[0]||[]).forEach(function(r){if(r.supplier)s[r.supplier]=1;}); (a[1]||[]).forEach(function(r){if(r.name)s[r.name]=1;}); return Object.keys(s).sort(); }).catch(function(){return [];}); }
