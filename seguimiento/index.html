@@ -1528,13 +1528,13 @@ var UI={
       var bar='<div style="background:#eef1f5;border-radius:5px;height:9px;overflow:hidden;min-width:70px"><div style="height:9px;width:'+barw+'%;background:'+(barw>=99?'var(--green)':'var(--blue)')+'"></div></div>';
       var cerradoAdm=p.cerrado && av<0.9995;
       var estado=pedCulminado(p)?'<span class="pill ok">Culminado'+(cerradoAdm?' *':'')+'</span>':'<span class="pill pend">Activo</span>';
-      return '<tr><td class="mono"><a class="flink" onclick="UI.verPedido(\''+sid(pedNum(p.pedido))+'\')">'+pedNum(p.pedido)+'</a></td><td>'+esc(p.desc)+'</td><td class="center">'+monCanon(p.moneda)+'</td><td class="num">'+money(p.monto)+'</td><td class="num">'+money(p.anticipo)+'</td><td class="num">'+money(p.facturado)+'</td><td>'+bar+'<div class="bar-val" style="text-align:center">'+pct(av)+'</div></td><td class="num">'+money(p.disponible)+'</td><td class="center">'+estado+'</td></tr>';}).join('');
-    var tfoot=lista.length?'<tfoot><tr class="tfoot-row"><td colspan="3">TOTAL '+scope+' ('+lista.length+')</td><td class="num">'+money0(tMonto)+'</td><td class="num">'+money0(tAnt)+'</td><td class="num">'+money0(tFact)+'</td><td></td><td class="num">'+money0(tDisp)+'</td><td></td></tr></tfoot>':'';
+      return '<tr><td class="mono"><a class="flink" onclick="UI.verPedido(\''+sid(pedNum(p.pedido))+'\')">'+pedNum(p.pedido)+'</a></td><td class="ped-desc" title="'+esc(p.desc)+'">'+esc(p.desc)+'</td><td class="center">'+monCanon(p.moneda)+'</td><td class="num">'+money(p.monto)+'</td><td class="num">'+money(p.anticipo)+'</td><td class="num">'+money(p.facturado)+'</td><td>'+bar+'<div class="bar-val" style="text-align:center">'+pct(av)+'</div></td><td class="num">'+money(p.disponible)+'</td><td class="center ped-pdf">'+(typeof PedPDF!=='undefined'?PedPDF.cell(p):'')+'</td><td class="center">'+estado+'</td></tr>';}).join('');
+    var tfoot=lista.length?'<tfoot><tr class="tfoot-row"><td colspan="3">TOTAL '+scope+' ('+lista.length+')</td><td class="num">'+money0(tMonto)+'</td><td class="num">'+money0(tAnt)+'</td><td class="num">'+money0(tFact)+'</td><td></td><td class="num">'+money0(tDisp)+'</td><td class="ped-pdf"></td><td></td></tr></tfoot>':'';
     var titulo=pf==='activos'?'Pedidos activos':pf==='culminados'?'Pedidos culminados':'Ejecución de pedidos';
     document.getElementById('tab-pedidos').innerHTML=kp+filtRow+
       '<div class="card"><div class="section-hdr">'+titulo+'<span class="section-hdr-right">'+lista.length+' pedidos</span></div><div class="section-body"><table id="tPed"><thead><tr>'+
-      '<th>Pedido</th><th>Descripción</th><th class="center">Mon.</th>'+th('Monto','tPed',3,1)+th('Anticipo','tPed',4,1)+th('Facturado','tPed',5,1)+'<th>% Avance</th>'+th('Disponible','tPed',7,1)+'<th class="center">Estado</th></tr></thead><tbody>'+
-      (rows||'<tr><td colspan="9" class="empty">Sin pedidos en este filtro</td></tr>')+'</tbody>'+tfoot+'</table></div></div>'+
+      '<th style="width:104px">Pedido</th><th>Descripción</th><th class="center" style="width:52px">Mon.</th>'+wth(th('Monto','tPed',3,1),'118px')+wth(th('Anticipo','tPed',4,1),'108px')+wth(th('Facturado','tPed',5,1),'118px')+'<th style="width:104px">% Avance</th>'+wth(th('Disponible','tPed',7,1),'118px')+'<th class="center ped-pdf" style="width:92px">PDF</th><th class="center" style="width:104px">Estado</th></tr></thead><tbody>'+
+      (rows||'<tr><td colspan="10" class="empty">Sin pedidos en este filtro</td></tr>')+'</tbody>'+tfoot+'</table></div></div>'+
       '<div class="hint" style="margin-top:2px">Los totales (KPIs y pie de tabla) corresponden al filtro seleccionado. <b>*</b> = cierre administrativo antes del 100%.</div>';
   }
 };
@@ -2520,6 +2520,7 @@ var KPICO={
  purple:'<path d="M12 3 20 12 12 21 4 12z" fill="currentColor" opacity=".3"/><path d="M12 8l3 4-3 4-3-4z" fill="currentColor"/>'
 };
 function kpi(c,l,v,s,ic){var KHUE={navy:'#1E5AA8',blue:'#0ea5e9',green:'#0a8f5b',orange:'#ea580c',red:'#e11d48',purple:'#7c3aed'};var hue=KHUE[c]||'#1E5AA8';var g=ic||KPICO[c]||KPICO.navy;return '<div class="kpi '+c+'"><span class="kpi-ic" style="--kh:'+hue+'"><svg viewBox="0 0 24 24">'+g+'</svg></span><div class="kpi-lbl">'+l+'</div><div class="kpi-val">'+v+'</div><div class="kpi-sub">'+(s||'')+'</div></div>';}
+function wth(h,w){return h.replace('<th','<th style="width:'+w+'"');}
 function th(t,tbl,c,n){return '<th'+(n?' class="num"':'')+' onclick="srt(\''+tbl+'\','+c+(n?',1':'')+')">'+t+'</th>';}
 function srt(t,c,n){var tb=document.getElementById(t).tBodies[0];var rs=[...tb.rows].filter(r=>!r.classList.contains('tfoot-row')&&!r.querySelector('.empty'));if(!rs.length)return;tb._d=tb._d||{};var a=!tb._d[c];tb._d={};tb._d[c]=a;
   rs.sort((x,y)=>{var p=x.cells[c].innerText.replace(/[$,%\s]/g,''),q=y.cells[c].innerText.replace(/[$,%\s]/g,'');if(n){p=parseFloat(p)||0;q=parseFloat(q)||0;return a?p-q:q-p;}return a?p.localeCompare(q):q.localeCompare(p);});
@@ -3236,6 +3237,13 @@ var Seleccion = (function () {
       td.addEventListener('click', function (e) { if (e.target !== cb) cb.click(); });
       r.insertBefore(td, r.firstChild);
     });
+    /* El pie propio de cada pestaña (tfoot) no pasa por filas(): sin esta celda
+       vacía sus totales quedaban corridos una columna a la izquierda. */
+    if (tabla.tFoot) [].slice.call(tabla.tFoot.rows).forEach(function (r) {
+      if (r.classList.contains('sel-total') || r.querySelector('td.sel-col,th.sel-col')) return;
+      var td = document.createElement('td'); td.className = 'sel-col';
+      r.insertBefore(td, r.firstChild);
+    });
   }
 
   /* ── 3 · filas marcadas y barra global ───────────────────────────────── */
@@ -3321,6 +3329,113 @@ var Seleccion = (function () {
   return { revisar: revisar, limpiar: function () { sel = {}; programar(); } };
 })();
 
+</script>
+<script>
+/* ═══════════════════════════════════════════════════════════════════════
+   PEDIDOS · PDF del cliente (Telefónica Movistar) por pedido
+   Bucket privado de Supabase Storage «pedidos-pdf» (ver 19_seguimiento_pedidos_pdf.sql).
+     · Subir / reemplazar: admin o quien tenga permiso de editar Pedidos.
+     · Ver: en ventana emergente con URL firmada (10 min). Sin pestañas nuevas.
+   Cada archivo se guarda con ruta única <pedido>/<marca de tiempo>.pdf; al
+   reemplazar no se borra el anterior (queda en el bucket como historial), y el
+   cambio de p.pdf queda en la auditoría universal porque pasa por Store.save().
+   ═══════════════════════════════════════════════════════════════════════ */
+var PedPDF = (function () {
+  'use strict';
+  var BUCKET = 'pedidos-pdf', MAX_MB = 15;
+  function stBase() { return Store.rest().replace(/\/rest\/v1\/?$/, '') + '/storage/v1'; }
+  function hdr(extra) { var h = { 'apikey': SB.key, 'Authorization': 'Bearer ' + ((typeof Auth !== 'undefined' && Auth.token()) || SB.key) }; if (extra) for (var k in extra) h[k] = extra[k]; return h; }
+  function enc(path) { return path.split('/').map(encodeURIComponent).join('/'); }
+  function fd(iso) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || '')); return m ? (m[3] + '-' + m[2] + '-' + m[1]) : ''; }
+  function puede() { try { return Auth.puedeEditar('pedidos'); } catch (e) { return false; } }
+
+  function cell(p) {
+    var ped = sid(pedNum(p.pedido)), f = p.pdf;
+    if (f && f.path) {
+      var tip = 'Ver PDF del pedido' + (f.fecha ? (' · subido ' + fd(f.fecha)) : '') + (f.por ? (' por ' + f.por) : '');
+      return '<button type="button" class="pdf-ver" title="' + esc(tip) + '" onclick="PedPDF.ver(\'' + ped + '\')">PDF</button>' +
+        '<button type="button" class="pdf-mini req-edit-pedidos" title="Reemplazar PDF" aria-label="Reemplazar PDF" onclick="PedPDF.subir(\'' + ped + '\')">↻</button>';
+    }
+    return '<button type="button" class="pdf-add req-edit-pedidos" title="Subir el PDF del pedido" onclick="PedPDF.subir(\'' + ped + '\')">＋ PDF</button><span class="pdf-none">—</span>';
+  }
+
+  function subir(ped) {
+    if (!puede()) { toast('Su usuario no puede editar pedidos'); return; }
+    if (!Store.cloud()) { toast('Subir PDF requiere conexión con la nube'); return; }
+    var p = pedidoPorNum(ped); if (!p) { toast('Pedido no encontrado'); return; }
+    if (p.pdf && p.pdf.path && !confirm('El pedido ' + ped + ' ya tiene un PDF. ¿Reemplazarlo por uno nuevo?')) return;
+    var inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'application/pdf,.pdf';
+    inp.onchange = function () {
+      var file = inp.files && inp.files[0]; if (!file) return;
+      if (!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf') { toast('El archivo debe ser PDF'); return; }
+      if (file.size > MAX_MB * 1024 * 1024) { toast('El PDF supera ' + MAX_MB + ' MB'); return; }
+      var path = sid(pedNum(p.pedido)) + '/' + Date.now() + '.pdf';
+      toast('Subiendo PDF…');
+      fetch(stBase() + '/object/' + BUCKET + '/' + enc(path), { method: 'POST', headers: hdr({ 'Content-Type': 'application/pdf', 'x-upsert': 'false' }), body: file })
+        .then(function (r) { if (!r.ok) return r.text().then(function (t) { throw Error(r.status === 403 || /policy|row-level/i.test(t) ? 'Sin permiso para subir (¿ejecutaste 19_seguimiento_pedidos_pdf.sql?)' : ('No se pudo subir (' + r.status + ')')); }); })
+        .then(function () {
+          p.pdf = { path: path, nombre: file.name, tam: file.size, fecha: new Date().toISOString().slice(0, 10), por: (Auth.email && Auth.email()) || '' };
+          Store.save(); UI.postWrite(); toast('PDF del pedido ' + pedNum(p.pedido) + ' guardado');
+        })
+        .catch(function (e) { toast(e.message || 'No se pudo subir el PDF'); });
+    };
+    inp.click();
+  }
+
+  function ver(ped) {
+    var p = pedidoPorNum(ped); if (!p || !p.pdf || !p.pdf.path) { toast('Este pedido no tiene PDF'); return; }
+    fetch(stBase() + '/object/sign/' + BUCKET + '/' + enc(p.pdf.path), { method: 'POST', headers: hdr({ 'Content-Type': 'application/json' }), body: JSON.stringify({ expiresIn: 600 }) })
+      .then(function (r) { return r.ok ? r.json() : r.json().then(function (e) { throw Error(e.message || 'No se pudo abrir el PDF'); }); })
+      .then(function (d) { var u = d.signedURL || d.signedUrl || ''; if (!u) throw Error('No se pudo abrir el PDF'); modal(stBase() + u.replace(/^\/?storage\/v1/, ''), p); })
+      .catch(function (e) { toast(e.message); });
+  }
+
+  function modal(url, p) {
+    var ov = document.getElementById('pedPdfOv'); if (ov) ov.remove();
+    ov = document.createElement('div'); ov.id = 'pedPdfOv'; ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-label', 'PDF del pedido');
+    var f = p.pdf || {};
+    ov.innerHTML = '<div class="pp-box"><div class="pp-bar"><div class="pp-t"><b>Pedido ' + esc(pedNum(p.pedido)) + '</b>' + (p.desc ? ('<span>' + esc(p.desc) + '</span>') : '') + '</div>' +
+      '<span class="pp-meta">' + esc(f.nombre || '') + (f.fecha ? (' · ' + fd(f.fecha)) : '') + '</span>' +
+      '<button type="button" class="pp-x" aria-label="Cerrar">×</button></div>' +
+      '<iframe title="PDF del pedido ' + esc(pedNum(p.pedido)) + '" src="' + esc(url) + '"></iframe></div>';
+    document.body.appendChild(ov);
+    function close() { if (ov.parentNode) ov.remove(); document.removeEventListener('keydown', onkey); }
+    function onkey(e) { if (e.key === 'Escape') close(); }
+    ov.querySelector('.pp-x').onclick = close;
+    ov.addEventListener('click', function (e) { if (e.target === ov) close(); });
+    document.addEventListener('keydown', onkey);
+  }
+
+  if (!document.getElementById('pedPdfCss')) {
+    var st = document.createElement('style'); st.id = 'pedPdfCss';
+    st.textContent =
+      '#tPed{table-layout:fixed;width:100%}' +
+      '#tPed th,#tPed td{overflow:hidden;text-overflow:ellipsis}' +
+      '#tPed td.ped-desc{white-space:normal;line-height:1.3}' +
+      '#tPed th.sel-col,#tPed td.sel-col{width:34px}' +
+      '#tPed .pdf-ver,#tPed .pdf-add,#tPed .pdf-mini{border:1px solid #C9D6E3;background:#fff;border-radius:7px;padding:3px 8px;font:inherit;font-size:11.5px;font-weight:700;cursor:pointer;line-height:1.3}' +
+      '#tPed .pdf-ver{color:#C0201E;border-color:#F0C4C3;background:#FFF5F5}' +
+      '#tPed .pdf-ver:hover{background:#FFE9E9}' +
+      '#tPed .pdf-add{color:#1E5AA8;border-style:dashed}' +
+      '#tPed .pdf-mini{margin-left:4px;padding:3px 6px;color:#41586E}' +
+      'body.can-pedidos #tPed .pdf-none{display:none}' +
+      '#tPed .pdf-none{color:#98a6b8}' +
+      '#pedPdfOv{position:fixed;inset:0;background:rgba(0,30,61,.72);z-index:9000;display:flex;align-items:center;justify-content:center;padding:20px}' +
+      '#pedPdfOv .pp-box{background:#fff;border-radius:14px;box-shadow:0 24px 70px rgba(0,0,0,.45);width:min(1100px,96vw);height:92vh;display:flex;flex-direction:column;overflow:hidden}' +
+      '#pedPdfOv .pp-bar{display:flex;align-items:center;gap:12px;padding:10px 14px;background:linear-gradient(120deg,#001E3D,#002E5B);color:#fff}' +
+      '#pedPdfOv .pp-t{flex:1;min-width:0;display:flex;gap:10px;align-items:baseline}' +
+      '#pedPdfOv .pp-t span{opacity:.8;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
+      '#pedPdfOv .pp-meta{font-size:11.5px;opacity:.7;white-space:nowrap}' +
+      '#pedPdfOv .pp-x{background:rgba(255,255,255,.15);border:0;color:#fff;width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:18px;line-height:1}' +
+      '#pedPdfOv iframe{flex:1;width:100%;border:0;background:#525659}' +
+      '@media (max-width:768px){#tPed{table-layout:auto}#pedPdfOv{padding:0}#pedPdfOv .pp-box{width:100vw;height:100vh;border-radius:0}#pedPdfOv .pp-meta{display:none}}' +
+      '@media print{#tPed th.ped-pdf,#tPed td.ped-pdf{display:none}}';
+    document.head.appendChild(st);
+  }
+  /* si la pestaña de pedidos ya se dibujó antes de cargar este módulo, redibujar */
+  try { if (document.getElementById('tPed') && typeof UI !== 'undefined') UI.pedidos(); } catch (e) {}
+  return { cell: cell, subir: subir, ver: ver };
+})();
 </script>
 <script>
 /* ═══════════════════════════════════════════════════════════════════════
