@@ -845,7 +845,7 @@ var Store={
   saveLocal:function(){try{localStorage.setItem(KEY,JSON.stringify(this.data));}catch(e){}},
 
   /* ---- separar / fusionar los dos documentos ---- */
-  VOP:['id','fecha','estacion','pedido','val','montoUSD','desc','origen'], /* campos operativos → doc valuaciones */
+  VOP:['id','fecha','estacion','pedido','val','montoUSD','desc','origen','informes'], /* campos operativos → doc valuaciones */
   vid:function(){return 'v'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);},
   ensureIds:function(){var self=this;(this.data.valuaciones||[]).forEach(function(v){if(!v.id)v.id=self.vid();});},
   docVal:function(){this.ensureIds();var self=this;
@@ -858,7 +858,7 @@ var Store={
   merge:function(dv,df,dp){
     var vf=(df&&df.valFact)||{};
     var vals=((dv&&dv.valuaciones)||[]).map(function(v){var o=vf[v.id]||{};
-      return {id:v.id,fecha:v.fecha||'',estacion:v.estacion||'',pedido:v.pedido||'',val:v.val||'',montoUSD:+v.montoUSD||0,desc:v.desc||'',origen:v.origen||'',
+      return {id:v.id,fecha:v.fecha||'',estacion:v.estacion||'',pedido:v.pedido||'',val:v.val||'',montoUSD:+v.montoUSD||0,desc:v.desc||'',origen:v.origen||'',informes:Array.isArray(v.informes)?v.informes:[],
               hes:o.hes||'',fact:o.fact||'',estado:o.estado||'Pendiente HES',fechaHes:o.fechaHes||'',etapa:o.etapa||''};});
     var peds=(dp&&dp.pedidos)||(df&&df.pedidos)||[];   /* dp = doc pedidos; fallback a df por compatibilidad */
     return {valuaciones:vals,estaciones:(dv&&dv.estaciones)||[],facturas:(df&&df.facturas)||[],pedidos:peds,historico:(df&&df.historico)||{},meta:(df&&df.meta)||{}};},
@@ -1966,9 +1966,12 @@ var Val={nueva:false,items:[],
     var q=(document.getElementById('valBuscar')?document.getElementById('valBuscar').value:'').toLowerCase();
     var fe=(document.getElementById('valEstado')?document.getElementById('valEstado').value:'');
     var fp=(document.getElementById('valPed')?document.getElementById('valPed').value:'');
+    var fi=(document.getElementById('valInf')?document.getElementById('valInf').value:'');
+    var INF=(typeof Informes!=='undefined')?Informes:null;
     var rows=V.map((v,i)=>({v:v,i:i,est:estadoVal(v,hs)})).filter(o=>{
       if(fe&&o.est!==fe)return false;
       if(fp&&pedNum(o.v.pedido)!==fp)return false;
+      if(fi&&INF&&((fi==='sin')===INF.tiene(o.v)))return false;
       if(q){var s=(o.v.estacion+' '+o.v.val+' '+o.v.pedido+' '+o.v.hes+' '+esc(o.v.desc)+' '+(o.v.fact||'')).toLowerCase();if(!s.includes(q))return false;}return true;})
       .sort((a,b)=>(b.v.fecha||'').localeCompare(a.v.fecha||''));
     /* Los KPI salen de LO MISMO que pinta la tabla: asi «Monto total» y el
@@ -2013,12 +2016,12 @@ var Val={nueva:false,items:[],
       var pp=pedidoPorNum(o.v.pedido);var petq=pedNum(o.v.pedido)+(pp&&pp.desc?'  |  '+pp.desc:'');
       var facNum=String(o.v.fact||'').trim()||hs[String(o.v.hes||'').trim()]||'';
       var facCell=facNum?(Store.data.facturas.some(x=>String(x.factura)===String(facNum))?'<a class="flink" onclick="UI.verFactura(\''+facNum+'\')">'+facNum+'</a>':facNum):'—';
-      return '<tr><td class="center">'+fdate(o.v.fecha)+'</td><td>'+esc(o.v.estacion)+'</td><td class="center">'+o.v.val+'</td><td style="font-size:11px">'+petq+'</td><td class="num">'+money(o.v.montoUSD)+'</td><td class="mono">'+(o.v.hes||'—')+'</td><td class="mono center">'+facCell+'</td><td class="center"><span class="badge2 '+b+'">'+o.est+'</span></td><td class="center">'+acc+'</td></tr>';}).join('');
+      return '<tr><td class="center">'+fdate(o.v.fecha)+'</td><td>'+esc(o.v.estacion)+'</td><td class="center">'+o.v.val+'</td><td style="font-size:11px">'+petq+'</td><td class="num">'+money(o.v.montoUSD)+'</td><td class="mono">'+(o.v.hes||'—')+'</td><td class="mono center">'+facCell+'</td><td class="center val-inf">'+(INF?INF.celda(o.v,Store.data.valuaciones.indexOf(o.v)):'')+'</td><td class="center"><span class="badge2 '+b+'">'+o.est+'</span></td><td class="center">'+acc+'</td></tr>';}).join('');
     var pedsVal=[...new Set(V.map(v=>pedNum(v.pedido)).filter(x=>/^\d+$/.test(x)))].sort((a,b)=>(+a)-(+b));
     var pedOpt='<option value="">Todos los pedidos</option>'+pedsVal.map(p=>{var pp=pedidoPorNum(p);return '<option value="'+p+'">'+p+(pp&&pp.desc?'  |  '+pp.desc:'')+'</option>';}).join('');
-    var tbl='<div class="card"><div class="section-hdr">Valuaciones<span class="section-hdr-right">'+rows.length+' ítems</span></div><div class="section-body">'+
-      '<div class="toolbar"><input id="valBuscar" placeholder="Buscar estación, HES, factura..." style="min-width:220px" oninput="Val.render()"><select id="valPed" onchange="Val.render()">'+pedOpt+'</select><select id="valEstado" onchange="Val.render()"><option value="">Todos los estados</option><option>Pendiente HES</option><option>Por facturar</option><option>Facturada</option></select></div>'+
-      '<table id="tVal"><thead><tr>'+th('Fecha','tVal',0)+'<th>Estación</th><th class="center">Val</th><th>Pedido</th>'+th('Monto','tVal',4,1)+'<th>HES</th><th class="center">N° Factura</th><th class="center">Estado</th><th class="center">Acciones</th></tr></thead><tbody>'+(body||'<tr><td colspan="9" class="empty">Sin valuaciones</td></tr>')+'</tbody></table></div></div>';
+    var tbl='<div class="card"><div class="section-hdr">Valuaciones<span class="section-hdr-right">'+rows.length+' ítems'+(INF?(function(){var n=rows.filter(function(o){return !INF.tiene(o.v);}).length;return n?(' · <b style="color:var(--red)">'+n+' sin informe</b>'):' · todos con informe';})():'')+'</span></div><div class="section-body">'+
+      '<div class="toolbar"><input id="valBuscar" placeholder="Buscar estación, HES, factura..." style="min-width:220px" oninput="Val.render()"><select id="valPed" onchange="Val.render()">'+pedOpt+'</select><select id="valEstado" onchange="Val.render()"><option value="">Todos los estados</option><option>Pendiente HES</option><option>Por facturar</option><option>Facturada</option></select><select id="valInf" onchange="Val.render()"><option value="">Con y sin informe</option><option value="sin">Sin informe</option><option value="con">Con informe</option></select><span style="flex:1"></span><button class="btn gr req-edit-val" onclick="Informes.masiva()" title="Subir muchos informes de una vez">📷 Carga masiva de informes</button></div>'+
+      '<table id="tVal"><thead><tr>'+th('Fecha','tVal',0)+'<th>Estación</th><th class="center">Val</th><th>Pedido</th>'+th('Monto','tVal',4,1)+'<th>HES</th><th class="center">N° Factura</th><th class="center val-inf">Informe</th><th class="center">Estado</th><th class="center">Acciones</th></tr></thead><tbody>'+(body||'<tr><td colspan="10" class="empty">Sin valuaciones</td></tr>')+'</tbody></table></div></div>';
     if(anio&&crit==='fac'&&sinFact>0)aviso+=nota('var(--mut3)',sinFact+' valuaci&oacute;n(es) todav&iacute;a sin factura no entran con este criterio; c&aacute;mbialo a &laquo;fecha de valuaci&oacute;n&raquo; para verlas.');
     /* El selector vivia al fondo, en la barra de la tabla, y nadie lo veia:
        la cifra estaba arriba y el criterio que la explica, abajo. Va junto a
@@ -2029,7 +2032,7 @@ var Val={nueva:false,items:[],
       +'<option value="val"'+(crit==='val'?' selected':'')+'>fecha de la valuaci&oacute;n</option>'
       +'<option value="fac"'+(crit==='fac'?' selected':'')+'>fecha de su factura (compara con Facturas)</option></select></div>'):'<input type="hidden" id="valBase" value="'+crit+'">';
     document.getElementById('tab-val').innerHTML=selCrit+k+cuadreHtml+aviso+form+tbl;
-    var vb=document.getElementById('valBuscar');if(vb){vb.value=q;document.getElementById('valEstado').value=fe;document.getElementById('valPed').value=fp;}
+    var vb=document.getElementById('valBuscar');if(vb){vb.value=q;document.getElementById('valEstado').value=fe;document.getElementById('valPed').value=fp;var vi=document.getElementById('valInf');if(vi)vi.value=fi;}
   },
   abrir:function(){this.nueva=true;this.items=[{estacion:'',montoUSD:'',desc:''}];this.render();},
   cerrar:function(){this.nueva=false;this.render();},
@@ -2041,13 +2044,13 @@ var Val={nueva:false,items:[],
     var peds=pedidosReales().sort((a,b)=>(+pedNum(a.pedido))-(+pedNum(b.pedido)));
     var opts='<option value="">— pedido —</option>'+peds.map(p=>'<option value="'+pedNum(p.pedido)+'">'+pedNum(p.pedido)+'  |  '+esc(p.desc)+'</option>').join('');
     var dl='<datalist id="estDL">'+(Store.data.estaciones||[]).map(e=>'<option value="'+String(e).replace(/"/g,'&quot;')+'">').join('')+'</datalist>';
-    var irows=this.items.map((it,i)=>'<tr><td><input list="estDL" value="'+(it.estacion||'').replace(/"/g,'&quot;')+'" placeholder="Elija o escriba estación"></td><td><input type="number" step="0.01" value="'+(it.montoUSD||'')+'" placeholder="Monto"></td><td><input value="'+(it.desc||'').replace(/"/g,'&quot;')+'" placeholder="Descripción (opcional)"></td><td class="center"><span style="cursor:pointer;color:var(--red);font-weight:700" onclick="Val.delRow('+i+')">✕</span></td></tr>').join('');
+    var irows=this.items.map((it,i)=>'<tr><td><input list="estDL" value="'+(it.estacion||'').replace(/"/g,'&quot;')+'" placeholder="Elija o escriba estación"></td><td><input type="number" step="0.01" value="'+(it.montoUSD||'')+'" placeholder="Monto"></td><td><input value="'+(it.desc||'').replace(/"/g,'&quot;')+'" placeholder="Descripción (opcional)"></td><td class="center" style="white-space:nowrap">'+(typeof Informes!=='undefined'?Informes.filaForm(i):'')+'</td><td class="center"><span style="cursor:pointer;color:var(--red);font-weight:700" onclick="Val.delRow('+i+')">✕</span></td></tr>').join('');
     return '<div class="form">'+dl+'<h3>Nueva valuación (varias estaciones a la vez)</h3>'+
       '<div class="frow"><div class="fld"><label>Pedido</label><select id="nvPed" class="wide" onchange="Val.onPed()">'+opts+'</select></div>'+
       '<div class="fld"><label>Valuación</label><input id="nvVal" style="min-width:90px" placeholder="V-1"></div>'+
       '<div class="fld"><label>Fecha</label><input id="nvFecha" type="date" value="'+new Date().toISOString().slice(0,10)+'"></div></div>'+
       '<div class="info-pedido" id="nvInfo"></div>'+
-      '<table class="itemtbl"><thead><tr><th>Estación</th><th style="width:130px">Monto USD</th><th>Descripción del ítem</th><th style="width:34px"></th></tr></thead><tbody id="itemsBody">'+irows+'</tbody></table>'+
+      '<table class="itemtbl"><thead><tr><th>Estación</th><th style="width:130px">Monto USD</th><th>Descripción del ítem</th><th class="center" style="width:70px" title="Informe fotográfico (opcional)">Informe</th><th style="width:34px"></th></tr></thead><tbody id="itemsBody">'+irows+'</tbody></table>'+(typeof Informes!=='undefined'?Informes.bloqueForm():'')+
       '<div style="margin:6px 0 14px"><button class="btn gr" onclick="Val.addRow()">＋ Agregar estación</button></div>'+
       '<div class="frow"><button class="btn g" onclick="Val.guardar()">Crear valuación</button><button class="btn r" onclick="Val.cerrar()">Cancelar</button></div>'+
       '<div class="hint">Se crea un ítem por estación, todos con la misma valuación, en estado “Pendiente HES”.</div></div>';
@@ -2056,8 +2059,11 @@ var Val={nueva:false,items:[],
     var p=document.getElementById('nvPed').value,val=document.getElementById('nvVal').value.trim(),fe=document.getElementById('nvFecha').value;
     if(!p){toast('Seleccione el pedido');return;}if(!val){toast('Indique la valuación');return;}if(!fe){toast('Indique la fecha');return;}
     var its=this.items.filter(x=>x.estacion.trim());if(!its.length){toast('Agregue al menos una estación');return;}
+    var antes=Store.data.valuaciones.slice();
     var n=Proc.crearValuacion(p,val,fe,its);this.nueva=false;
+    var nuevas=Store.data.valuaciones.filter(function(v){return antes.indexOf(v)<0;});
     UI.postWrite();toast(n+' ítem(s) creados para '+val);
+    if(n&&typeof Informes!=='undefined')Informes.trasCrear(nuevas,its);
   },
   editar:function(idx){
     var v=Store.data.valuaciones[idx];if(!v)return;var hs=hesSet();var facturada=(String(v.hes||'').trim()&&(String(v.fact||'').trim()||hs[String(v.hes).trim()]));
@@ -2542,7 +2548,7 @@ UI.boot();
     var body=document.getElementById('segAuditBody'); body.innerHTML='Cargando…';
     fetch(Store.rest()+'rpc/app_audit_list',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},Store.headers()),body:JSON.stringify({p_app:'seguimiento',p_limit:100})})
       .then(function(r){return r.ok?r.json():r.json().then(function(e){throw Error(e.message||'error');});})
-      .then(function(rows){ rows=rows||[]; var AL={cierre_proyecto:'Cierre de proyecto',facturar:'Facturación',pago:'Registro de pago',eliminar_factura:'Eliminar factura',eliminar_valuacion:'Eliminar valuación','Valuacion agregada':'Valuación agregada','Valuacion eliminada':'Valuación eliminada','Vinculacion factura-valuacion':'Vinculación factura–valuación','Sincronizacion / recalculo':'Sincronización / recálculo'};
+      .then(function(rows){ rows=rows||[]; var AL={cierre_proyecto:'Cierre de proyecto',facturar:'Facturación',pago:'Registro de pago',eliminar_factura:'Eliminar factura',eliminar_valuacion:'Eliminar valuación','Valuacion agregada':'Valuación agregada','Valuacion eliminada':'Valuación eliminada','Vinculacion factura-valuacion':'Vinculación factura–valuación','Sincronizacion / recalculo':'Sincronización / recálculo','Informe fotografico':'Informe fotográfico'};
         var FLD={fPago:'Fecha de pago',fVenc:'Vencimiento',fecha:'Fecha de emisión',status:'Estado',estado:'Estado',pagos:'Cobrado',amortizado:'Amortizado',porCobrar:'Por cobrar',base:'Base',iva:'IVA',total:'Total',tasa:'Tasa BCV',pedido:'Pedido',descPedido:'Descripción del pedido',desc:'Descripción',moneda:'Moneda',nHes:'N° de HES',hes:'HES',estacion:'Estación',val:'Valuación',montoUSD:'Monto USD',monto:'Monto',plazo:'Plazo (días)',anticipo:'Anticipo',facturado:'Facturado',disponible:'Disponible',avance:'Avance',rol:'Rol',email:'Correo',cerrado:'Cerrado',fechaCierre:'Fecha de cierre',fechaHes:'Fecha HES',
           etapa:'Etapa',fact:'Factura asociada',islr:'ISLR retenido',baseIslr:'Base ISLR',cliente:'Cliente',anio:'Año',mes:'Mes',lineas:'Líneas de la factura',origen:'Origen',factura:'N° de factura',cobrado:'Cobrado',nombre:'Nombre',motivo:'Motivo',obs:'Observación',observaciones:'Observaciones'};
         function fl(k){ return FLD[k]||k; }
@@ -2575,6 +2581,9 @@ UI.boot();
           function obj(c){ var o=(c.op==='-')?VB[c.p]:VA[c.p]; if(o!=null&&typeof o==='object')return o; try{ return JSON.parse(c.op==='-'?c.a:c.b); }catch(e){ return o!=null?o:{}; } }
           function esAlta(c){ var q=parseP(c.p); return !!(q.kf&&q.key&&!q.rest&&(c.op==='+'||c.op==='-')); }
           var out=[], n=0;
+          /* informes fotográficos: valuaciones[id=…].informes[id=…] */
+          ch=ch.filter(function(c){ var q=parseP(c.p); var mi=/^informes\[(?:id=)?([^\]]*)\]$/.exec(q.rest||''); if(!mi||(c.op!=='+'&&c.op!=='-'))return true;
+            var o=obj(c)||{}; if(n<16){ out.push('<div>'+(c.op==='+'?'📷 Informe fotográfico agregado':'Informe fotográfico desvinculado')+' — '+esc(subj(q))+(o.nombre?(' · <b>'+esc(o.nombre)+'</b>'):'')+'</div>'); n++; } return false; });
           ch.filter(esAlta).forEach(function(c){ if(n<16){ out.push(alta(c,obj(c),parseP(c.p))); n++; } });
           var resto=ch.filter(function(c){return !esAlta(c);});
           var groups={}, gord=[]; resto.forEach(function(c){ var q=parseP(c.p); var k=q.ent+'|'+(q.rest||'')+'|'+c.op+'|'+(c.b||''); if(!groups[k]){groups[k]={q:q,op:c.op,b:c.b,items:[]};gord.push(k);} groups[k].items.push(c); });
@@ -2885,6 +2894,7 @@ UI.boot();
     if(ch.some(function(c){return /^facturas\[/.test(c.p)&&c.op==='+';}))return 'Factura generada';
     if(ch.some(function(c){return /^facturas\[/.test(c.p)&&c.op==='-';}))return 'Factura eliminada';
     if(/facturas\[[^\]]*\]\.(pagos|porCobrar|fPago|status|islr)/.test(p))return 'Pago / cobranza';
+    if(ch.every(function(c){return /^valuaciones\[[^\]]*\]\.informes/.test(c.p);}))return 'Informe fotografico';
     if(/valuaciones\[[^\]]*\]\.hes/.test(p))return 'HES asignada';
     if(/valuaciones\[[^\]]*\]\.fact/.test(p))return 'Vinculacion factura-valuacion';
     if(ch.some(function(c){return /^valuaciones\[/.test(c.p)&&c.op==='+';}))return 'Valuacion agregada';
@@ -3435,6 +3445,279 @@ var PedPDF = (function () {
   /* si la pestaña de pedidos ya se dibujó antes de cargar este módulo, redibujar */
   try { if (document.getElementById('tPed') && typeof UI !== 'undefined') UI.pedidos(); } catch (e) {}
   return { cell: cell, subir: subir, ver: ver };
+})();
+</script>
+<script>
+/* ═══════════════════════════════════════════════════════════════════════
+   VALUACIONES · INFORMES FOTOGRÁFICOS (PDF en Dropbox)
+   Los PDF viven en Dropbox (/Apps/Caleva Informes/Seguimiento/…); Supabase solo
+   guarda la referencia en v.informes = [{id,path,nombre,tam,fecha,por}].
+   La Edge Function «informes-dropbox» entrega enlaces temporales:
+     · subir → el navegador envía el PDF DIRECTO a Dropbox (no pasa por Supabase)
+     · ver   → enlace de lectura de 4 h, mostrado en ventana emergente
+   Regla: cada valuación (pedido + V-n + estación) tiene su(s) PROPIO(S) informe(s).
+   Un PDF nunca se comparte entre valuaciones: si el mismo archivo (nombre + tamaño)
+   ya está asociado a otra, se bloquea. Nada se borra de Dropbox desde la app; el
+   admin puede «desvincular» una referencia equivocada (queda en auditoría).
+   ═══════════════════════════════════════════════════════════════════════ */
+var Informes = (function () {
+  'use strict';
+  var MAX_MB = 150;   /* límite de los enlaces de subida temporal de Dropbox */
+
+  function fnUrl() { return Store.rest().replace(/\/rest\/v1\/?$/, '') + '/functions/v1/informes-dropbox'; }
+  function llamar(body) {
+    return fetch(fnUrl(), { method: 'POST', headers: Store.headers(), body: JSON.stringify(body) })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (d) {
+        if (!r.ok || d.error) {
+          if (r.status === 404) throw Error('Falta desplegar la función «informes-dropbox» en Supabase');
+          throw Error(d.error || ('Error ' + r.status));
+        }
+        return d; }); });
+  }
+  function lista(v) { return Array.isArray(v && v.informes) ? v.informes : []; }
+  function tiene(v) { return lista(v).length > 0; }
+  function puedeSubir() { try { return Auth.puedeEditar('val'); } catch (e) { return false; } }
+  function fd(iso) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || '')); return m ? (m[3] + '-' + m[2] + '-' + m[1]) : ''; }
+  function mb(n) { if (!n) return ''; if (n < 1048576) return Math.max(1, Math.round(n / 1024)) + ' KB'; return (n / 1048576).toLocaleString('es-VE', { maximumFractionDigits: 1 }) + ' MB'; }
+  function rid() { return 'i' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+  /* Dropbox no admite \ / : * ? " < > | en nombres; recorta y limpia */
+  function seg(s, max) { s = String(s || '').replace(/[\\\/:*?"<>|\u0000-\u001f]+/g, '-').replace(/\s+/g, ' ').trim(); if (s.length > (max || 80)) s = s.slice(0, max || 80).trim(); return s.replace(/[. ]+$/, '') || 'sin-nombre'; }
+  function etq(v) { return (v.val || '') + ' · ' + (v.estacion || '') + ' (pedido ' + pedNum(v.pedido) + ')'; }
+  /* ¿Este archivo ya está asociado a alguna valuación? (mismo nombre y tamaño) */
+  function duplicado(file) {
+    var V = Store.data.valuaciones;
+    for (var i = 0; i < V.length; i++) { var l = lista(V[i]);
+      for (var k = 0; k < l.length; k++) if (l[k].nombre === file.name && +l[k].tam === file.size) return V[i]; }
+    return null;
+  }
+  function idxDe(v) { return Store.data.valuaciones.indexOf(v); }
+
+  /* /Seguimiento/<pedido · desc>/<V-n · estación>/<fecha_hora>_<nombre>.pdf */
+  function ruta(v, nombre) {
+    var p = pedidoPorNum(v.pedido);
+    var est = v.estacion || 'sin estación';
+    var d = new Date(), z = function (n) { return (n < 10 ? '0' : '') + n; };
+    var stamp = d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate()) + '_' + z(d.getHours()) + z(d.getMinutes()) + z(d.getSeconds()) + '_' + Math.random().toString(36).slice(2, 5);
+    var base = String(nombre || 'informe.pdf').replace(/\.pdf$/i, '');
+    return '/Seguimiento/' + seg(pedNum(v.pedido) + (p && p.desc ? (' · ' + p.desc) : ''), 90) + '/' + seg((v.val || 'V') + ' · ' + est, 90) + '/' + stamp + '_' + seg(base, 70) + '.pdf';
+  }
+
+  /* Sube UN archivo y lo asocia a UNA valuación. No guarda: lo hace quien llama. */
+  function subirUno(file, v) {
+    if (!v) return Promise.reject(Error(file.name + ': sin valuación'));
+    if (!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf') return Promise.reject(Error(file.name + ': no es PDF'));
+    if (file.size > MAX_MB * 1048576) return Promise.reject(Error(file.name + ': supera ' + MAX_MB + ' MB'));
+    var d0 = duplicado(file); if (d0) return Promise.reject(Error(file.name + ': ya está asociado a ' + etq(d0)));
+    var path = ruta(v, file.name);
+    return llamar({ accion: 'subir', path: path })
+      .then(function (d) {
+        return fetch(d.link, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: file })
+          .then(function (r) { if (!r.ok) throw Error(file.name + ': Dropbox rechazó la subida (' + r.status + ')'); });
+      })
+      .then(function () {
+        var ref = { id: rid(), path: path, nombre: file.name, tam: file.size, fecha: new Date().toISOString().slice(0, 10), por: (Auth.email && Auth.email()) || '' };
+        if (!Array.isArray(v.informes)) v.informes = []; v.informes.push(ref);
+        return ref;
+      });
+  }
+  /* Sube en serie una lista [{file, v}], con progreso; guarda al final. */
+  function subirLote(trabajos, onProg) {
+    if (!Store.cloud()) { toast('Los informes requieren conexión con la nube'); return Promise.resolve({ ok: 0, err: [] }); }
+    var ok = 0, err = [], i = 0;
+    function next() {
+      if (i >= trabajos.length) {
+        if (ok) { Store.save(); UI.postWrite(); }
+        return Promise.resolve({ ok: ok, err: err });
+      }
+      var t = trabajos[i++]; if (onProg) onProg(i, trabajos.length, t.file.name);
+      return subirUno(t.file, t.v).then(function () { ok++; }, function (e) { err.push(e.message); }).then(next);
+    }
+    return next();
+  }
+
+  /* ---------- celda de la tabla de valuaciones ---------- */
+  function celda(v, idx) {
+    var n = lista(v).length;
+    if (n) return '<button type="button" class="inf-ok" title="' + n + ' informe(s) fotográfico(s)" onclick="Informes.gestor(' + idx + ')">📷 ' + n + '</button>';
+    return '<button type="button" class="inf-sin" title="' + (puedeSubir() ? 'Subir informe fotográfico' : 'Esta valuación no tiene informe fotográfico') + '" onclick="Informes.gestor(' + idx + ')">Sin informe</button>';
+  }
+
+  /* ---------- gestor: lista, ver, subir, desvincular ---------- */
+  function gestor(idx) {
+    var v = Store.data.valuaciones[idx]; if (!v) return;
+    var p = pedidoPorNum(v.pedido);
+    var filas = lista(v).map(function (f, k) {
+      return '<tr><td><a class="flink" onclick="Informes.ver(' + idx + ',' + k + ')">📄 ' + esc(f.nombre || 'informe.pdf') + '</a></td><td class="center">' + fd(f.fecha) + '</td><td>' + esc(f.por || '') + '</td><td class="num">' + mb(f.tam) + '</td>' +
+        '<td class="center"><button type="button" class="btn gr" style="padding:3px 10px" onclick="Informes.ver(' + idx + ',' + k + ')">Ver</button>' +
+        ' <span class="req-admin" style="cursor:pointer;color:var(--red);font-size:12px;margin-left:6px" title="Quita la referencia (el PDF sigue en Dropbox)" onclick="Informes.desvincular(' + idx + ',' + k + ')">Desvincular</span></td></tr>';
+    }).join('');
+    document.getElementById('modalTit').textContent = 'Informe fotográfico · ' + (v.val || '') + ' · ' + (v.estacion || '');
+    document.getElementById('modalBody').innerHTML =
+      '<div class="info-pedido" style="margin-bottom:10px"><span>Pedido <b>' + esc(pedNum(v.pedido)) + '</b>' + (p && p.desc ? (' · ' + esc(p.desc)) : '') + '</span><span>Fecha <b>' + fdate(v.fecha) + '</b></span><span>Monto <b>' + money(v.montoUSD) + '</b></span></div>' +
+      (filas ? ('<table class="itemtbl"><thead><tr><th>Archivo</th><th class="center" style="width:96px">Subido</th><th>Por</th><th class="num" style="width:80px">Tamaño</th><th class="center" style="width:150px"></th></tr></thead><tbody>' + filas + '</tbody></table>')
+             : '<div class="inf-vacio">Esta valuación todavía no tiene informe fotográfico.</div>') +
+      '<div class="req-edit-val inf-subir">' +
+        '<label class="btn g" style="cursor:pointer">＋ Subir PDF(s)<input id="infFiles" type="file" accept="application/pdf,.pdf" multiple style="display:none" onchange="Informes.subirDesdeGestor(' + idx + ')"></label>' +
+        '<div id="infProg" class="hint"></div></div>' +
+      '<div class="hint" style="margin-top:8px">Los PDF se guardan en Dropbox (carpeta «Caleva Informes»). Nada se borra desde la app.</div>';
+    document.getElementById('modalBg').classList.add('on');
+  }
+  function subirDesdeGestor(idx) {
+    var v = Store.data.valuaciones[idx], inp = document.getElementById('infFiles'); if (!v || !inp || !inp.files.length) return;
+    if (!puedeSubir()) { toast('Su usuario no puede editar Valuaciones'); return; }
+    var files = [].slice.call(inp.files), prog = document.getElementById('infProg');
+    subirLote(files.map(function (f) { return { file: f, v: v }; }), function (i, n, nm) { if (prog) prog.textContent = 'Subiendo ' + i + ' de ' + n + ': ' + nm + '…'; })
+      .then(function (r) { toast(r.ok + ' informe(s) subido(s)' + (r.err.length ? (' · ' + r.err.length + ' con error') : '')); if (r.err.length) alert('No se pudieron subir:\n' + r.err.join('\n')); gestor(idxDe(v)); });
+  }
+  function desvincular(idx, k) {
+    if (!(Auth.esAdmin && Auth.esAdmin())) { toast('Solo el administrador puede desvincular'); return; }
+    var v = Store.data.valuaciones[idx], f = lista(v)[k]; if (!f) return;
+    if (!confirm('¿Quitar «' + (f.nombre || 'informe') + '» de esta valuación?\nEl PDF NO se borra de Dropbox; solo deja de estar asociado aquí.')) return;
+    v.informes.splice(k, 1); Store.save(); UI.postWrite(); gestor(idx);
+  }
+
+  /* ---------- visor ---------- */
+  function ver(idx, k) {
+    var v = Store.data.valuaciones[idx], f = lista(v)[k]; if (!f) return;
+    llamar({ accion: 'ver', path: f.path }).then(function (d) { visor(d.link, v, f); }).catch(function (e) { toast(e.message); });
+  }
+  function visor(url, v, f) {
+    var ov = document.getElementById('infPdfOv'); if (ov) ov.remove();
+    ov = document.createElement('div'); ov.id = 'infPdfOv'; ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-label', 'Informe fotográfico');
+    ov.innerHTML = '<div class="pp-box"><div class="pp-bar"><div class="pp-t"><b>' + esc((v.val || '') + ' · ' + (v.estacion || '')) + '</b><span>Pedido ' + esc(pedNum(v.pedido)) + ' · ' + esc(f.nombre || '') + '</span></div>' +
+      '<a class="pp-a" href="' + esc(url) + '" target="_blank" rel="noopener">Abrir aparte</a><button type="button" class="pp-x" aria-label="Cerrar">×</button></div>' +
+      '<iframe title="Informe fotográfico" src="' + esc(url) + '"></iframe></div>';
+    document.body.appendChild(ov);
+    function close() { if (ov.parentNode) ov.remove(); document.removeEventListener('keydown', onkey); }
+    function onkey(e) { if (e.key === 'Escape') close(); }
+    ov.querySelector('.pp-x').onclick = close; ov.addEventListener('click', function (e) { if (e.target === ov) close(); });
+    document.addEventListener('keydown', onkey);
+  }
+
+  /* ---------- carga masiva ---------- */
+  /* Reconoce en el nombre del archivo: pedido (10 dígitos 56…), valuación (V-7, V7, V_7, Val 7) y,
+     si aparece, la estación. Sin estación reconocida → todas las estaciones de esa valuación. */
+  var lote = [];
+  function norm(s) { return String(s || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Z0-9]+/g, ' ').trim(); }
+  function reconocer(nombre) {
+    var n = norm(nombre.replace(/\.pdf$/i, '')), raw = nombre;
+    var mp = /(?:^|\D)(56\d{8})(?!\d)/.exec(raw), ped = mp ? mp[1] : '';
+    var mv = /(?:^|[^A-Z])(?:V|VAL|VALUACION)\s*(\d{1,3})(?![0-9])/.exec(n), val = mv ? ('V-' + (+mv[1])) : '';
+    var cand = Store.data.valuaciones.filter(function (x) { return (!ped || pedNum(x.pedido) === ped) && (!val || String(x.val).toUpperCase().replace(/\s/g, '') === val); });
+    if (!ped || !val || !cand.length) return { ped: ped, val: val, sel: '' };
+    if (cand.length === 1) return { ped: ped, val: val, sel: 'e:' + idxDe(cand[0]) };
+    /* varias estaciones con esa V-n: la estación tiene que venir en el nombre */
+    var est = cand.filter(function (x) { var e = norm(x.estacion); return e.length > 2 && n.indexOf(e) >= 0; });
+    if (est.length > 1) est = est.sort(function (a, b) { return norm(b.estacion).length - norm(a.estacion).length; }).slice(0, 1);
+    return { ped: ped, val: val, sel: est.length === 1 ? ('e:' + idxDe(est[0])) : '', falta: est.length ? '' : 'estación' };
+  }
+  function opciones(sel) {
+    var grupos = {}, ords = [];
+    Store.data.valuaciones.forEach(function (x, i) { var k = pedNum(x.pedido) + '|' + x.val; if (!grupos[k]) { grupos[k] = []; ords.push(k); } grupos[k].push(i); });
+    ords.sort(function (a, b) { return b.localeCompare(a); });
+    var h = '<option value="">— elegir valuación —</option>';
+    ords.forEach(function (k) { var g = grupos[k], pv = k.split('|'), v0 = Store.data.valuaciones[g[0]];
+      var cnt = g.filter(function (i) { return tiene(Store.data.valuaciones[i]); }).length;
+      h += '<optgroup label="' + esc(pv[0] + ' · ' + pv[1] + ' (' + fdate(v0.fecha) + ')' + (cnt ? ' · ' + cnt + ' con informe' : '')) + '">';
+      g.forEach(function (i) { var x = Store.data.valuaciones[i]; h += '<option value="e:' + i + '"' + (sel === 'e:' + i ? ' selected' : '') + '>' + esc(pv[1] + ' · ' + (x.estacion || '')) + (tiene(x) ? ' ✓' : '') + '</option>'; });
+      h += '</optgroup>'; });
+    return h;
+  }
+  function valDe(sel) { return /^e:\d+$/.test(sel) ? (Store.data.valuaciones[+sel.slice(2)] || null) : null; }
+  function masiva() {
+    if (!puedeSubir()) { toast('Su usuario no puede editar Valuaciones'); return; }
+    lote = [];
+    document.getElementById('modalTit').textContent = 'Carga masiva de informes fotográficos';
+    document.getElementById('modalBody').innerHTML =
+      '<div class="hint" style="margin:0 0 10px">Elija varios PDF (o una carpeta). Se reconoce el <b>pedido</b> (5602…), la <b>valuación</b> (V-7, V7, Val 7) y, si aparece en el nombre, la <b>estación</b>. ' +
+      'Ejemplo: <code>5602022983 V-7 CD4 SAN ANTONIO.pdf</code>. Cada PDF va a <b>una</b> valuación; si la V-n tiene varias estaciones y el nombre no dice cuál, elíjala. Revise antes de subir.</div>' +
+      '<div class="frow"><label class="btn g" style="cursor:pointer">Elegir PDFs…<input type="file" accept="application/pdf,.pdf" multiple style="display:none" onchange="Informes.masivaArchivos(this.files)"></label>' +
+      '<label class="btn gr" style="cursor:pointer">Elegir carpeta…<input type="file" webkitdirectory multiple style="display:none" onchange="Informes.masivaArchivos(this.files)"></label></div>' +
+      '<div id="infLote"></div>';
+    document.getElementById('modalBg').classList.add('on');
+  }
+  function masivaArchivos(fl) {
+    var files = [].slice.call(fl || []).filter(function (f) { return /\.pdf$/i.test(f.name); });
+    var vistos = {};
+    lote = files.map(function (f) { var r = reconocer(f.name), k = f.name + '|' + f.size, d = duplicado(f);
+      var nota = d ? ('Ya asociado a ' + etq(d)) : (vistos[k] ? 'Repetido en esta carga' : (r.falta === 'estación' ? 'Elija la estación' : ''));
+      var bloq = !!(d || vistos[k]); vistos[k] = 1;
+      return { file: f, sel: bloq ? '' : r.sel, nota: nota, bloq: bloq }; });
+    pintarLote();
+  }
+  function pintarLote() {
+    var box = document.getElementById('infLote'); if (!box) return;
+    if (!lote.length) { box.innerHTML = '<div class="inf-vacio">No se eligieron PDF.</div>'; return; }
+    var ok = lote.filter(function (l) { return l.sel && !l.bloq; }).length;
+    box.innerHTML = '<div style="margin:10px 0 6px;font-size:12.5px"><b>' + lote.length + '</b> PDF · <b style="color:var(--green)">' + ok + '</b> asociados · <b style="color:' + (ok < lote.length ? 'var(--red)' : 'var(--mut)') + '">' + (lote.length - ok) + '</b> sin asociar (se omiten)</div>' +
+      '<div style="max-height:46vh;overflow:auto"><table class="itemtbl"><thead><tr><th>Archivo</th><th class="num" style="width:76px">Tamaño</th><th style="width:52%">Asociar a</th></tr></thead><tbody>' +
+      lote.map(function (l, i) { return '<tr' + (l.sel && !l.bloq ? '' : ' style="background:#fff5f5"') + '><td style="font-size:12px;word-break:break-all">' + esc(l.file.name) + (l.nota ? ('<div style="color:var(--red);font-size:11px;font-weight:700">' + esc(l.nota) + '</div>') : '') + '</td><td class="num">' + mb(l.file.size) + '</td><td>' + (l.bloq ? '<i style="color:var(--mut)">se omite</i>' : ('<select style="width:100%" onchange="Informes.masivaSel(' + i + ',this.value)">' + opciones(l.sel) + '</select>')) + '</td></tr>'; }).join('') +
+      '</tbody></table></div>' +
+      '<div class="frow" style="margin-top:10px"><button class="btn g" id="infLoteBtn" onclick="Informes.masivaSubir()"' + (ok ? '' : ' disabled') + '>Subir ' + ok + ' informe(s) a Dropbox</button><button class="btn r" onclick="UI.cerrarModal()">Cancelar</button></div>' +
+      '<div id="infProg" class="hint"></div>';
+  }
+  function masivaSel(i, v) { if (lote[i]) { lote[i].sel = v; if (v && lote[i].nota === 'Elija la estación') lote[i].nota = ''; pintarLote(); } }
+  function masivaSubir() {
+    var trabajos = lote.filter(function (l) { return l.sel && !l.bloq; }).map(function (l) { return { file: l.file, v: valDe(l.sel) }; }).filter(function (t) { return t.v; });
+    if (!trabajos.length) return;
+    var b = document.getElementById('infLoteBtn'); if (b) b.disabled = true;
+    var prog = document.getElementById('infProg');
+    subirLote(trabajos, function (i, n, nm) { if (prog) prog.textContent = 'Subiendo ' + i + ' de ' + n + ': ' + nm + '…'; })
+      .then(function (r) { if (prog) prog.innerHTML = '<b>' + r.ok + '</b> subido(s)' + (r.err.length ? (' · <b style="color:var(--red)">' + r.err.length + ' con error</b>: ' + esc(r.err.join(' | '))) : '') + '.';
+        toast(r.ok + ' informe(s) subido(s)'); lote = []; });
+  }
+
+  /* ---------- formulario «Nueva valuación»: PDF por estación o uno para todas ---------- */
+  function filaForm(i) {
+    var it = Val.items[i] || {}, fs = it.files || [];
+    return '<label class="inf-pick" title="Informe fotográfico de esta estación (opcional)">📎<input type="file" accept="application/pdf,.pdf" multiple style="display:none" onchange="Informes.pickRow(' + i + ',this)"></label>' +
+      (fs.length ? ('<span class="inf-picked">' + fs.length + ' PDF</span>') : '');
+  }
+  function pickRow(i, inp) { Val.cap(); if (Val.items[i]) Val.items[i].files = [].slice.call(inp.files || []); Val.render(); }
+  function bloqueForm() {
+    return '<div class="inf-form"><span>📷 <b>Informe fotográfico</b> (opcional):</span>' +
+      '<span class="hint" style="margin:0">use 📎 en cada estación — cada una lleva su propio informe. También puede subirlo después desde la tabla.</span></div>';
+  }
+  /* tras crear: subir a las valuaciones recién creadas */
+  function trasCrear(nuevas, items) {
+    var trabajos = [];
+    items.forEach(function (it) { (it.files || []).forEach(function (f) {
+      var v = nuevas.filter(function (x) { return String(x.estacion).trim() === String(it.estacion).trim(); })[0];
+      if (v) trabajos.push({ file: f, v: v }); }); });
+    if (!trabajos.length) return;
+    toast('Subiendo ' + trabajos.length + ' informe(s) a Dropbox…');
+    subirLote(trabajos).then(function (r) { toast(r.ok + ' informe(s) asociados' + (r.err.length ? (' · ' + r.err.length + ' con error') : '')); if (r.err.length) alert('No se pudieron subir:\n' + r.err.join('\n')); });
+  }
+
+  if (!document.getElementById('infCss')) {
+    var st = document.createElement('style'); st.id = 'infCss';
+    st.textContent =
+      '#tVal .inf-ok,#tVal .inf-sin{border:1px solid;border-radius:999px;padding:2px 9px;font:inherit;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;line-height:1.4}' +
+      '#tVal .inf-ok{color:#1d7c59;border-color:#b7ecd6;background:#e6fbf3}' +
+      '#tVal .inf-sin{color:#C0201E;border-color:#F0C4C3;background:#FFF5F5}' +
+      '#tVal .inf-ok:hover{background:#d3f5e7}#tVal .inf-sin:hover{background:#FFE9E9}' +
+      '.inf-vacio{padding:14px;border:1px dashed #C9D6E3;border-radius:10px;color:var(--mut);text-align:center;font-size:12.5px}' +
+      '.inf-subir{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-top:12px}' +
+      '.inf-form{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:6px 0 12px;padding:9px 12px;border:1px dashed #C9D6E3;border-radius:10px;background:#f8fafc;font-size:12.5px}' +
+      '.inf-pick{cursor:pointer;font-size:15px;padding:0 4px}.inf-picked{font-size:11.5px;font-weight:700;color:#1d7c59}' +
+      '#infPdfOv{position:fixed;inset:0;background:rgba(0,30,61,.72);z-index:9000;display:flex;align-items:center;justify-content:center;padding:20px}' +
+      '#infPdfOv .pp-box{background:#fff;border-radius:14px;box-shadow:0 24px 70px rgba(0,0,0,.45);width:min(1100px,96vw);height:92vh;display:flex;flex-direction:column;overflow:hidden}' +
+      '#infPdfOv .pp-bar{display:flex;align-items:center;gap:12px;padding:10px 14px;background:linear-gradient(120deg,#001E3D,#002E5B);color:#fff}' +
+      '#infPdfOv .pp-t{flex:1;min-width:0;display:flex;gap:10px;align-items:baseline}' +
+      '#infPdfOv .pp-t span{opacity:.8;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
+      '#infPdfOv .pp-a{color:#9db4ff;text-decoration:none;font-size:12.5px;white-space:nowrap}' +
+      '#infPdfOv .pp-x{background:rgba(255,255,255,.15);border:0;color:#fff;width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:18px;line-height:1}' +
+      '#infPdfOv iframe{flex:1;width:100%;border:0;background:#525659}' +
+      '@media (max-width:768px){#infPdfOv{padding:0}#infPdfOv .pp-box{width:100vw;height:100vh;border-radius:0}}' +
+      '@media print{#tVal th.val-inf,#tVal td.val-inf{display:none}}';
+    document.head.appendChild(st);
+  }
+  try { if (document.getElementById('tVal') && typeof Val !== 'undefined') Val.render(); } catch (e) {}
+
+  return { tiene: tiene, celda: celda, gestor: gestor, subirDesdeGestor: subirDesdeGestor, desvincular: desvincular, ver: ver,
+           masiva: masiva, masivaArchivos: masivaArchivos, masivaSel: masivaSel, masivaSubir: masivaSubir,
+           filaForm: filaForm, pickRow: pickRow, bloqueForm: bloqueForm, trasCrear: trasCrear,
+           _reconocer: reconocer, _ruta: ruta };
 })();
 </script>
 <script>
