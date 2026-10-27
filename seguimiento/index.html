@@ -3482,7 +3482,8 @@ var Informes = (function () {
       .then(function (r) { return r.json().catch(function () { return {}; }).then(function (d) {
         if (!r.ok || d.error) {
           if (r.status === 404) throw Error('Falta desplegar la función «informes-dropbox» en Supabase');
-          throw Error(d.error || ('Error ' + r.status));
+          if (d.code === 'UNAUTHORIZED_LEGACY_JWT') throw Error('Supabase rechazó la sesión: en la función «informes-dropbox» desactiva «Verify JWT with legacy secret» y despliega la versión nueva del código');
+          throw Error(d.error || d.message || ('Error ' + r.status));
         }
         return d; }); });
   }
