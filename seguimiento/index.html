@@ -2012,7 +2012,10 @@ var Val={nueva:false,items:[],
       '<b>'+hueco.hes+' HES ya facturadas'+(anio?' en '+anio:'')+' no tienen valuaci&oacute;n cargada</b> ('+money0(hueco.monto)+' de base, en '+hueco.facturas.length+' factura(s)). Mientras falten, lo facturado y lo valuado no pueden cuadrar.'+((Auth.esAdmin&&Auth.esAdmin())?' <a href="#" onclick="event.preventDefault();window.__segCompletar&amp;&amp;window.__segCompletar()" style="color:var(--blue);font-weight:700">Completar&nbsp;&rarr;</a>':''),
       'Facturas afectadas: '+hueco.facturas.join(', '));
     var body=rows.slice(0,600).map(o=>{var b=o.est==='Pendiente HES'?'b1':o.est==='Por facturar'?'b2':'b3';
-      var acc='<span class="req-edit-val" style="cursor:pointer;color:var(--blue);font-weight:700" title="Editar" onclick="Val.editar('+o.i+')">✎</span> <span class="req-admin" style="cursor:pointer;color:var(--red);font-weight:700" title="Eliminar (solo admin)" onclick="Val.borrar('+o.i+')">🗑</span>';
+      /* o.i es la posición en V (filtrada por año): editar/borrar necesitan la posición REAL.
+         Con un año seleccionado no coinciden y se abría OTRA valuación (otra HES, otro pedido). */
+      var ri=Store.data.valuaciones.indexOf(o.v);
+      var acc='<span class="req-edit-val" style="cursor:pointer;color:var(--blue);font-weight:700" title="Editar" onclick="Val.editar('+ri+')">✎</span> <span class="req-admin" style="cursor:pointer;color:var(--red);font-weight:700" title="Eliminar (solo admin)" onclick="Val.borrar('+ri+')">🗑</span>';
       var pp=pedidoPorNum(o.v.pedido);var petq=pedNum(o.v.pedido)+(pp&&pp.desc?'  |  '+pp.desc:'');
       var facNum=String(o.v.fact||'').trim()||hs[String(o.v.hes||'').trim()]||'';
       var facCell=facNum?(Store.data.facturas.some(x=>String(x.factura)===String(facNum))?'<a class="flink" onclick="UI.verFactura(\''+facNum+'\')">'+facNum+'</a>':facNum):'—';
@@ -2068,7 +2071,7 @@ var Val={nueva:false,items:[],
   editar:function(idx){
     var v=Store.data.valuaciones[idx];if(!v)return;var hs=hesSet();var facturada=(String(v.hes||'').trim()&&(String(v.fact||'').trim()||hs[String(v.hes).trim()]));
     var dl='<datalist id="edDL">'+(Store.data.estaciones||[]).map(e=>'<option value="'+String(e).replace(/"/g,'&quot;')+'">').join('')+'</datalist>';
-    document.getElementById('modalTit').textContent='Editar valuación';
+    document.getElementById('modalTit').textContent='Editar valuación · '+(v.val||'')+' · '+(v.estacion||'')+' · pedido '+pedNum(v.pedido);
     document.getElementById('modalBody').innerHTML=dl+
       '<div class="frow"><div class="fld"><label>Estación</label><input id="edEst" list="edDL" class="wide" value="'+(v.estacion||'').replace(/"/g,'&quot;')+'"></div>'+
       '<div class="fld"><label>Val</label><input id="edVal" style="min-width:80px" value="'+(v.val||'')+'"></div>'+
@@ -2087,7 +2090,7 @@ var Val={nueva:false,items:[],
   },
   borrar:function(idx){
     var v=Store.data.valuaciones[idx];if(!v)return;
-    if(!confirm('¿Eliminar la valuación de '+esc(v.estacion)+' ('+v.val+')?'))return;
+    if(!confirm('¿Eliminar la valuación '+v.val+' de '+v.estacion+'\nPedido '+pedNum(v.pedido)+' · '+money(v.montoUSD)+(String(v.hes||'').trim()?' · HES '+v.hes:'')+'?'))return;
     var res=Proc.eliminarValuacion(idx);if(res.err){toast(res.err);return;}
     UI.postWrite();toast('Valuación eliminada');
   }
@@ -2905,11 +2908,19 @@ UI.boot();
   var prev=null, ready=false;
   function snap(){ prev=clone(Store.data); ready=!!prev; }
   var iv=setInterval(function(){ if(Store.data&&(Store.data.facturas||Store.data.valuaciones||Store.data.pedidos)){ snap(); clearInterval(iv); } },600);
+  /* Tras cargar/recargar de la nube (load, reload, migrar llaman saveLocal fuera de save)
+     se vuelve a tomar la foto: si no, el siguiente guardado registraba como propios los
+     cambios que otro usuario hizo en la nube (entradas duplicadas en la auditoría). */
+  var enSave=false, _sl=Store.saveLocal;
+  Store.saveLocal=function(){ var r=_sl.apply(this,arguments); if(!enSave&&ready){ try{ snap(); }catch(e){} } return r; };
   var _s=Store.save;
   Store.save=function(){ try{
+      /* ids ANTES del diff: una valuación nueva sin id se identificaba por su pedido y el
+         log mostraba «estación X → Y» entre valuaciones distintas del mismo pedido */
+      if(Store.ensureIds)Store.ensureIds();
       if(!ready){ snap(); }
       else { var out=[]; diff(prev,Store.data,'',out); if(out.length){ var bef={},aft={}; out.forEach(function(c){ if('fa' in c)bef[c.p]=c.fa; if('fb' in c)aft[c.p]=c.fb; }); var disp=out.slice(0,120).map(function(c){return {p:c.p,op:c.op,a:c.a,b:c.b};}); A(label(out),(out[0]&&String(out[0].p).split(/[.[]/)[0])||'',{values:bef},{n:out.length,changes:disp,values:aft}); prev=clone(Store.data); } }
-    }catch(e){} return _s.apply(this,arguments); };
+    }catch(e){} enSave=true; try{ return _s.apply(this,arguments); } finally { enSave=false; } };
 })();
 </script>
 <script>
