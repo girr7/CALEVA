@@ -3478,6 +3478,7 @@ var Informes = (function () {
   function fnUrl() { return Store.rest().replace(/\/rest\/v1\/?$/, '') + '/functions/v1/informes-dropbox'; }
   function llamar(body) {
     return fetch(fnUrl(), { method: 'POST', headers: Store.headers(), body: JSON.stringify(body) })
+      .catch(function () { throw Error('No se pudo contactar la función «informes-dropbox» en Supabase: verifica que esté desplegada con ese nombre exacto'); })
       .then(function (r) { return r.json().catch(function () { return {}; }).then(function (d) {
         if (!r.ok || d.error) {
           if (r.status === 404) throw Error('Falta desplegar la función «informes-dropbox» en Supabase');
@@ -3523,6 +3524,7 @@ var Informes = (function () {
     return llamar({ accion: 'subir', path: path })
       .then(function (d) {
         return fetch(d.link, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: file })
+          .catch(function () { throw Error(file.name + ': el navegador no pudo enviar el archivo a Dropbox (¿publicaste _headers y netlify.toml?)'); })
           .then(function (r) { if (!r.ok) throw Error(file.name + ': Dropbox rechazó la subida (' + r.status + ')'); });
       })
       .then(function () {
@@ -3643,7 +3645,9 @@ var Informes = (function () {
       '<div class="hint" style="margin:0 0 10px">Elija varios PDF (o una carpeta). Se reconoce el <b>pedido</b> (5602…), la <b>valuación</b> (V-7, V7, Val 7) y, si aparece en el nombre, la <b>estación</b>. ' +
       'Ejemplo: <code>5602022983 V-7 CD4 SAN ANTONIO.pdf</code>. Cada PDF va a <b>una</b> valuación; si la V-n tiene varias estaciones y el nombre no dice cuál, elíjala. Revise antes de subir.</div>' +
       '<div class="frow"><label class="btn g" style="cursor:pointer">Elegir PDFs…<input type="file" accept="application/pdf,.pdf" multiple style="display:none" onchange="Informes.masivaArchivos(this.files)"></label>' +
-      '<label class="btn gr" style="cursor:pointer">Elegir carpeta…<input type="file" webkitdirectory multiple style="display:none" onchange="Informes.masivaArchivos(this.files)"></label></div>' +
+      '<label class="btn gr" style="cursor:pointer">Elegir carpeta…<input type="file" webkitdirectory multiple style="display:none" onchange="Informes.masivaArchivos(this.files)"></label>' +
+      '<span style="flex:1"></span><button class="btn gr" type="button" onclick="Informes.probar()" title="Verifica función, secretos de Dropbox, SQL y permisos">🔌 Probar conexión</button></div>' +
+      '<div id="infPrueba"></div>' +
       '<div id="infLote"></div>';
     document.getElementById('modalBg').classList.add('on');
   }
@@ -3676,6 +3680,29 @@ var Informes = (function () {
     subirLote(trabajos, function (i, n, nm) { if (prog) prog.textContent = 'Subiendo ' + i + ' de ' + n + ': ' + nm + '…'; })
       .then(function (r) { if (prog) prog.innerHTML = '<b>' + r.ok + '</b> subido(s)' + (r.err.length ? (' · <b style="color:var(--red)">' + r.err.length + ' con error</b>: ' + esc(r.err.join(' | '))) : '') + '.';
         toast(r.ok + ' informe(s) subido(s)'); lote = []; });
+  }
+
+  /* ---------- diagnóstico de la instalación ---------- */
+  function probar() {
+    var box = document.getElementById('infPrueba'); if (!box) return;
+    function pinta(ok, txt) { box.innerHTML = '<div style="margin:10px 0;padding:10px 12px;border-radius:9px;font-size:12.5px;border:1px solid ' + (ok ? '#b7ecd6;background:#e6fbf3' : '#F0C4C3;background:#FFF5F5') + '">' + txt + '</div>'; }
+    if (!Store.cloud()) { pinta(false, 'La app no está conectada a la nube.'); return; }
+    box.innerHTML = '<div class="hint">Probando…</div>';
+    llamar({ accion: 'estado' }).then(function (d) {
+      var dbxOk = d.ok;
+      pinta(dbxOk && d.ver,
+        '✔ Función <b>informes-dropbox</b> desplegada<br>✔ SQL 20 ejecutado (permisos leídos)<br>' +
+        (dbxOk ? ('✔ Dropbox conectado: <b>' + esc(d.dropbox) + '</b>') : ('✘ Dropbox: ' + esc(d.dropbox) + '<br><span style="color:var(--mut)">Revisa los 3 Secrets (paso 3 de la guía) o repite el refresh token (paso 2).</span>')) +
+        '<br>' + (d.editar ? '✔ Tu usuario puede <b>subir</b> informes' : (d.ver ? '• Tu usuario puede <b>ver</b> (no subir)' : '✘ Tu usuario no tiene permiso de Valuaciones')));
+    }).catch(function (e) {
+      var m = String(e.message || e);
+      var paso = /desplegar/.test(m) ? 'Falta el paso 3: desplegar la función «informes-dropbox».' :
+                 /20_seguimiento/.test(m) ? 'Falta el paso 4: correr 20_seguimiento_informes.sql.' :
+                 /Secrets/.test(m) ? 'Falta el paso 3: los 3 Secrets de Dropbox.' :
+                 /credenciales/.test(m) ? 'El refresh token no sirve: repite el paso 2.' :
+                 /Failed to fetch|NetworkError|Content Security/i.test(m) ? 'El navegador bloqueó la llamada: ¿subiste _headers y netlify.toml? (paso 5)' : '';
+      pinta(false, '✘ ' + esc(m) + (paso ? ('<br><b>' + paso + '</b>') : ''));
+    });
   }
 
   /* ---------- formulario «Nueva valuación»: PDF por estación o uno para todas ---------- */
@@ -3726,7 +3753,7 @@ var Informes = (function () {
   try { if (document.getElementById('tVal') && typeof Val !== 'undefined') Val.render(); } catch (e) {}
 
   return { tiene: tiene, celda: celda, gestor: gestor, subirDesdeGestor: subirDesdeGestor, desvincular: desvincular, ver: ver,
-           masiva: masiva, masivaArchivos: masivaArchivos, masivaSel: masivaSel, masivaSubir: masivaSubir,
+           masiva: masiva, masivaArchivos: masivaArchivos, probar: probar, masivaSel: masivaSel, masivaSubir: masivaSubir,
            filaForm: filaForm, pickRow: pickRow, bloqueForm: bloqueForm, trasCrear: trasCrear,
            _reconocer: reconocer, _ruta: ruta };
 })();
