@@ -3595,17 +3595,33 @@ var Informes = (function () {
     var v = Store.data.valuaciones[idx], f = lista(v)[k]; if (!f) return;
     llamar({ accion: 'ver', path: f.path }).then(function (d) { visor(d.link, v, f); }).catch(function (e) { toast(e.message); });
   }
+  /* Dropbox entrega el enlace temporal como DESCARGA (Content-Disposition: attachment),
+     así que el iframe no lo muestra. Se baja el PDF a memoria (su servidor permite CORS)
+     y se muestra desde un blob: con tipo application/pdf; el visor del navegador lo abre. */
   function visor(url, v, f) {
     var ov = document.getElementById('infPdfOv'); if (ov) ov.remove();
     ov = document.createElement('div'); ov.id = 'infPdfOv'; ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-label', 'Informe fotográfico');
     ov.innerHTML = '<div class="pp-box"><div class="pp-bar"><div class="pp-t"><b>' + esc((v.val || '') + ' · ' + (v.estacion || '')) + '</b><span>Pedido ' + esc(pedNum(v.pedido)) + ' · ' + esc(f.nombre || '') + '</span></div>' +
-      '<a class="pp-a" href="' + esc(url) + '" target="_blank" rel="noopener">Abrir aparte</a><button type="button" class="pp-x" aria-label="Cerrar">×</button></div>' +
-      '<iframe title="Informe fotográfico" src="' + esc(url) + '"></iframe></div>';
+      '<a class="pp-a" href="' + esc(url) + '" rel="noopener" title="Descargar el PDF">Descargar</a><button type="button" class="pp-x" aria-label="Cerrar">×</button></div>' +
+      '<div class="pp-cargando">Cargando informe' + (f.tam ? (' (' + mb(f.tam) + ')') : '') + '…</div></div>';
     document.body.appendChild(ov);
-    function close() { if (ov.parentNode) ov.remove(); document.removeEventListener('keydown', onkey); }
+    var blobUrl = null, vivo = true;
+    function close() { vivo = false; if (ov.parentNode) ov.remove(); document.removeEventListener('keydown', onkey); if (blobUrl) setTimeout(function () { URL.revokeObjectURL(blobUrl); }, 1000); }
     function onkey(e) { if (e.key === 'Escape') close(); }
     ov.querySelector('.pp-x').onclick = close; ov.addEventListener('click', function (e) { if (e.target === ov) close(); });
     document.addEventListener('keydown', onkey);
+    fetch(url).then(function (r) { if (!r.ok) throw Error('Dropbox respondió ' + r.status); return r.arrayBuffer(); })
+      .then(function (buf) {
+        if (!vivo) return;
+        blobUrl = URL.createObjectURL(new Blob([buf], { type: 'application/pdf' }));
+        var fr = document.createElement('iframe'); fr.title = 'Informe fotográfico'; fr.src = blobUrl;
+        var c = ov.querySelector('.pp-cargando'); if (c) c.replaceWith(fr);
+        var a = ov.querySelector('.pp-a'); if (a) { a.href = blobUrl; a.setAttribute('download', f.nombre || 'informe.pdf'); }
+      })
+      .catch(function (e) {
+        var c = ov.querySelector('.pp-cargando');
+        if (c) c.innerHTML = 'No se pudo mostrar el informe (' + esc(e.message || e) + ').<br><a href="' + esc(url) + '" rel="noopener" style="color:#9db4ff">Descargarlo</a>';
+      });
   }
 
   /* ---------- carga masiva ---------- */
@@ -3747,6 +3763,7 @@ var Informes = (function () {
       '#infPdfOv .pp-a{color:#9db4ff;text-decoration:none;font-size:12.5px;white-space:nowrap}' +
       '#infPdfOv .pp-x{background:rgba(255,255,255,.15);border:0;color:#fff;width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:18px;line-height:1}' +
       '#infPdfOv iframe{flex:1;width:100%;border:0;background:#525659}' +
+      '#infPdfOv .pp-cargando{flex:1;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;background:#525659;color:#fff;font-size:13px;text-align:center;padding:20px}' +
       '@media (max-width:768px){#infPdfOv{padding:0}#infPdfOv .pp-box{width:100vw;height:100vh;border-radius:0}}' +
       '@media print{#tVal th.val-inf,#tVal td.val-inf{display:none}}';
     document.head.appendChild(st);
