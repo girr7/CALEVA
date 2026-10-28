@@ -3460,7 +3460,7 @@ var PedPDF = (function () {
 </script>
 <script>
 /* ═══════════════════════════════════════════════════════════════════════
-   VALUACIONES · INFORMES FOTOGRÁFICOS (PDF en Dropbox)
+   VALUACIONES · INFORMES FOTOGRÁFICOS (PDF / ZIP / RAR / 7Z en Dropbox)
    Los PDF viven en Dropbox (/Apps/Caleva Informes/Seguimiento/…); Supabase solo
    guarda la referencia en v.informes = [{id,path,nombre,tam,fecha,por}].
    La Edge Function «informes-dropbox» entrega enlaces temporales:
@@ -3474,6 +3474,12 @@ var PedPDF = (function () {
 var Informes = (function () {
   'use strict';
   var MAX_MB = 150;   /* límite de los enlaces de subida temporal de Dropbox */
+  /* Tipos admitidos: PDF (se ve en la app) y comprimidos ZIP / RAR / 7Z (se descargan) */
+  var EXT = /\.(pdf|zip|rar|7z)$/i;
+  var ACCEPT = '.pdf,.zip,.rar,.7z,application/pdf,application/zip,application/x-zip-compressed,application/vnd.rar,application/x-rar-compressed,application/x-7z-compressed';
+  function extDe(n) { var m = /\.([a-z0-9]+)$/i.exec(String(n || '')); return m ? m[1].toLowerCase() : ''; }
+  function esPdf(f) { return extDe((f && (f.path || f.nombre)) || '') === 'pdf'; }
+  function icono(f) { return esPdf(f) ? '📄' : '🗜️'; }
 
   function fnUrl() { return Store.rest().replace(/\/rest\/v1\/?$/, '') + '/functions/v1/informes-dropbox'; }
   function llamar(body) {
@@ -3505,20 +3511,20 @@ var Informes = (function () {
   }
   function idxDe(v) { return Store.data.valuaciones.indexOf(v); }
 
-  /* /Seguimiento/<pedido · desc>/<V-n · estación>/<fecha_hora>_<nombre>.pdf */
+  /* /Seguimiento/<pedido · desc>/<V-n · estación>/<fecha_hora>_<nombre>.<pdf|zip|rar|7z> */
   function ruta(v, nombre) {
     var p = pedidoPorNum(v.pedido);
     var est = v.estacion || 'sin estación';
     var d = new Date(), z = function (n) { return (n < 10 ? '0' : '') + n; };
     var stamp = d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate()) + '_' + z(d.getHours()) + z(d.getMinutes()) + z(d.getSeconds()) + '_' + Math.random().toString(36).slice(2, 5);
-    var base = String(nombre || 'informe.pdf').replace(/\.pdf$/i, '');
-    return '/Seguimiento/' + seg(pedNum(v.pedido) + (p && p.desc ? (' · ' + p.desc) : ''), 90) + '/' + seg((v.val || 'V') + ' · ' + est, 90) + '/' + stamp + '_' + seg(base, 70) + '.pdf';
+    var ext = extDe(nombre) || 'pdf', base = String(nombre || 'informe').replace(EXT, '');
+    return '/Seguimiento/' + seg(pedNum(v.pedido) + (p && p.desc ? (' · ' + p.desc) : ''), 90) + '/' + seg((v.val || 'V') + ' · ' + est, 90) + '/' + stamp + '_' + seg(base, 70) + '.' + ext;
   }
 
   /* Sube UN archivo y lo asocia a UNA valuación. No guarda: lo hace quien llama. */
   function subirUno(file, v) {
     if (!v) return Promise.reject(Error(file.name + ': sin valuación'));
-    if (!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf') return Promise.reject(Error(file.name + ': no es PDF'));
+    if (!EXT.test(file.name)) return Promise.reject(Error(file.name + ': tipo no admitido (solo PDF, ZIP, RAR o 7Z)'));
     if (file.size > MAX_MB * 1048576) return Promise.reject(Error(file.name + ': supera ' + MAX_MB + ' MB'));
     var d0 = duplicado(file); if (d0) return Promise.reject(Error(file.name + ': ya está asociado a ' + etq(d0)));
     var path = ruta(v, file.name);
@@ -3561,9 +3567,9 @@ var Informes = (function () {
     var v = Store.data.valuaciones[idx]; if (!v) return;
     var p = pedidoPorNum(v.pedido);
     var filas = lista(v).map(function (f, k) {
-      return '<tr><td><a class="flink" onclick="Informes.ver(' + idx + ',' + k + ')">📄 ' + esc(f.nombre || 'informe.pdf') + '</a></td><td class="center">' + fd(f.fecha) + '</td><td>' + esc(f.por || '') + '</td><td class="num">' + mb(f.tam) + '</td>' +
-        '<td class="center"><button type="button" class="btn gr" style="padding:3px 10px" onclick="Informes.ver(' + idx + ',' + k + ')">Ver</button>' +
-        ' <span class="req-admin" style="cursor:pointer;color:var(--red);font-size:12px;margin-left:6px" title="Quita la referencia (el PDF sigue en Dropbox)" onclick="Informes.desvincular(' + idx + ',' + k + ')">Desvincular</span></td></tr>';
+      return '<tr><td><a class="flink" onclick="Informes.ver(' + idx + ',' + k + ')">' + icono(f) + ' ' + esc(f.nombre || 'informe') + '</a></td><td class="center">' + fd(f.fecha) + '</td><td>' + esc(f.por || '') + '</td><td class="num">' + mb(f.tam) + '</td>' +
+        '<td class="center"><button type="button" class="btn gr" style="padding:3px 10px" onclick="Informes.ver(' + idx + ',' + k + ')">' + (esPdf(f) ? 'Ver' : 'Descargar') + '</button>' +
+        ' <span class="req-admin" style="cursor:pointer;color:var(--red);font-size:12px;margin-left:6px" title="Quita la referencia (el archivo sigue en Dropbox)" onclick="Informes.desvincular(' + idx + ',' + k + ')">Desvincular</span></td></tr>';
     }).join('');
     document.getElementById('modalTit').textContent = 'Informe fotográfico · ' + (v.val || '') + ' · ' + (v.estacion || '');
     document.getElementById('modalBody').innerHTML =
@@ -3571,9 +3577,9 @@ var Informes = (function () {
       (filas ? ('<table class="itemtbl"><thead><tr><th>Archivo</th><th class="center" style="width:96px">Subido</th><th>Por</th><th class="num" style="width:80px">Tamaño</th><th class="center" style="width:150px"></th></tr></thead><tbody>' + filas + '</tbody></table>')
              : '<div class="inf-vacio">Esta valuación todavía no tiene informe fotográfico.</div>') +
       '<div class="req-edit-val inf-subir">' +
-        '<label class="btn g" style="cursor:pointer">＋ Subir PDF(s)<input id="infFiles" type="file" accept="application/pdf,.pdf" multiple style="display:none" onchange="Informes.subirDesdeGestor(' + idx + ')"></label>' +
+        '<label class="btn g" style="cursor:pointer">＋ Subir archivo(s)<input id="infFiles" type="file" accept="' + ACCEPT + '" multiple style="display:none" onchange="Informes.subirDesdeGestor(' + idx + ')"></label>' +
         '<div id="infProg" class="hint"></div></div>' +
-      '<div class="hint" style="margin-top:8px">Los PDF se guardan en Dropbox (carpeta «Caleva Informes»). Nada se borra desde la app.</div>';
+      '<div class="hint" style="margin-top:8px">PDF, ZIP, RAR o 7Z (hasta ' + MAX_MB + ' MB c/u). Se guardan en Dropbox (carpeta «Caleva Informes»); los PDF se ven en la app y los comprimidos se descargan. Nada se borra desde la app.</div>';
     document.getElementById('modalBg').classList.add('on');
   }
   function subirDesdeGestor(idx) {
@@ -3586,14 +3592,19 @@ var Informes = (function () {
   function desvincular(idx, k) {
     if (!(Auth.esAdmin && Auth.esAdmin())) { toast('Solo el administrador puede desvincular'); return; }
     var v = Store.data.valuaciones[idx], f = lista(v)[k]; if (!f) return;
-    if (!confirm('¿Quitar «' + (f.nombre || 'informe') + '» de esta valuación?\nEl PDF NO se borra de Dropbox; solo deja de estar asociado aquí.')) return;
+    if (!confirm('¿Quitar «' + (f.nombre || 'informe') + '» de esta valuación?\nEl archivo NO se borra de Dropbox; solo deja de estar asociado aquí.')) return;
     v.informes.splice(k, 1); Store.save(); UI.postWrite(); gestor(idx);
   }
 
   /* ---------- visor ---------- */
   function ver(idx, k) {
     var v = Store.data.valuaciones[idx], f = lista(v)[k]; if (!f) return;
-    llamar({ accion: 'ver', path: f.path }).then(function (d) { visor(d.link, v, f); }).catch(function (e) { toast(e.message); });
+    llamar({ accion: 'ver', path: f.path }).then(function (d) {
+      if (esPdf(f)) { visor(d.link, v, f); return; }
+      /* ZIP / RAR / 7Z: no hay visor; el enlace temporal de Dropbox ya llega como descarga */
+      var a = document.createElement('a'); a.href = d.link; a.rel = 'noopener'; a.setAttribute('download', f.nombre || 'informe');
+      document.body.appendChild(a); a.click(); a.remove(); toast('Descargando ' + (f.nombre || 'archivo') + '…');
+    }).catch(function (e) { toast(e.message); });
   }
   /* Dropbox entrega el enlace temporal como DESCARGA (Content-Disposition: attachment),
      así que el iframe no lo muestra. Se baja el PDF a memoria (su servidor permite CORS)
@@ -3630,7 +3641,7 @@ var Informes = (function () {
   var lote = [];
   function norm(s) { return String(s || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Z0-9]+/g, ' ').trim(); }
   function reconocer(nombre) {
-    var n = norm(nombre.replace(/\.pdf$/i, '')), raw = nombre;
+    var n = norm(nombre.replace(EXT, '')), raw = nombre;
     var mp = /(?:^|\D)(56\d{8})(?!\d)/.exec(raw), ped = mp ? mp[1] : '';
     var mv = /(?:^|[^A-Z])(?:V|VAL|VALUACION)\s*(\d{1,3})(?![0-9])/.exec(n), val = mv ? ('V-' + (+mv[1])) : '';
     var cand = Store.data.valuaciones.filter(function (x) { return (!ped || pedNum(x.pedido) === ped) && (!val || String(x.val).toUpperCase().replace(/\s/g, '') === val); });
@@ -3659,9 +3670,9 @@ var Informes = (function () {
     lote = [];
     document.getElementById('modalTit').textContent = 'Carga masiva de informes fotográficos';
     document.getElementById('modalBody').innerHTML =
-      '<div class="hint" style="margin:0 0 10px">Elija varios PDF (o una carpeta). Se reconoce el <b>pedido</b> (5602…), la <b>valuación</b> (V-7, V7, Val 7) y, si aparece en el nombre, la <b>estación</b>. ' +
-      'Ejemplo: <code>5602022983 V-7 CD4 SAN ANTONIO.pdf</code>. Cada PDF va a <b>una</b> valuación; si la V-n tiene varias estaciones y el nombre no dice cuál, elíjala. Revise antes de subir.</div>' +
-      '<div class="frow"><label class="btn g" style="cursor:pointer">Elegir PDFs…<input type="file" accept="application/pdf,.pdf" multiple style="display:none" onchange="Informes.masivaArchivos(this.files)"></label>' +
+      '<div class="hint" style="margin:0 0 10px">Elija varios archivos PDF, ZIP, RAR o 7Z (o una carpeta). Se reconoce el <b>pedido</b> (5602…), la <b>valuación</b> (V-7, V7, Val 7) y, si aparece en el nombre, la <b>estación</b>. ' +
+      'Ejemplo: <code>5602022983 V-7 CD4 SAN ANTONIO.pdf</code>. Cada archivo va a <b>una</b> valuación; si la V-n tiene varias estaciones y el nombre no dice cuál, elíjala. Revise antes de subir.</div>' +
+      '<div class="frow"><label class="btn g" style="cursor:pointer">Elegir archivos…<input type="file" accept="' + ACCEPT + '" multiple style="display:none" onchange="Informes.masivaArchivos(this.files)"></label>' +
       '<label class="btn gr" style="cursor:pointer">Elegir carpeta…<input type="file" webkitdirectory multiple style="display:none" onchange="Informes.masivaArchivos(this.files)"></label>' +
       '<span style="flex:1"></span><button class="btn gr" type="button" onclick="Informes.probar()" title="Verifica función, secretos de Dropbox, SQL y permisos">🔌 Probar conexión</button></div>' +
       '<div id="infPrueba"></div>' +
@@ -3669,7 +3680,7 @@ var Informes = (function () {
     document.getElementById('modalBg').classList.add('on');
   }
   function masivaArchivos(fl) {
-    var files = [].slice.call(fl || []).filter(function (f) { return /\.pdf$/i.test(f.name); });
+    var files = [].slice.call(fl || []).filter(function (f) { return EXT.test(f.name); });
     var vistos = {};
     lote = files.map(function (f) { var r = reconocer(f.name), k = f.name + '|' + f.size, d = duplicado(f);
       var nota = d ? ('Ya asociado a ' + etq(d)) : (vistos[k] ? 'Repetido en esta carga' : (r.falta === 'estación' ? 'Elija la estación' : ''));
@@ -3679,9 +3690,9 @@ var Informes = (function () {
   }
   function pintarLote() {
     var box = document.getElementById('infLote'); if (!box) return;
-    if (!lote.length) { box.innerHTML = '<div class="inf-vacio">No se eligieron PDF.</div>'; return; }
+    if (!lote.length) { box.innerHTML = '<div class="inf-vacio">No se eligieron archivos PDF, ZIP, RAR o 7Z.</div>'; return; }
     var ok = lote.filter(function (l) { return l.sel && !l.bloq; }).length;
-    box.innerHTML = '<div style="margin:10px 0 6px;font-size:12.5px"><b>' + lote.length + '</b> PDF · <b style="color:var(--green)">' + ok + '</b> asociados · <b style="color:' + (ok < lote.length ? 'var(--red)' : 'var(--mut)') + '">' + (lote.length - ok) + '</b> sin asociar (se omiten)</div>' +
+    box.innerHTML = '<div style="margin:10px 0 6px;font-size:12.5px"><b>' + lote.length + '</b> archivo(s) · <b style="color:var(--green)">' + ok + '</b> asociados · <b style="color:' + (ok < lote.length ? 'var(--red)' : 'var(--mut)') + '">' + (lote.length - ok) + '</b> sin asociar (se omiten)</div>' +
       '<div style="max-height:46vh;overflow:auto"><table class="itemtbl"><thead><tr><th>Archivo</th><th class="num" style="width:76px">Tamaño</th><th style="width:52%">Asociar a</th></tr></thead><tbody>' +
       lote.map(function (l, i) { return '<tr' + (l.sel && !l.bloq ? '' : ' style="background:#fff5f5"') + '><td style="font-size:12px;word-break:break-all">' + esc(l.file.name) + (l.nota ? ('<div style="color:var(--red);font-size:11px;font-weight:700">' + esc(l.nota) + '</div>') : '') + '</td><td class="num">' + mb(l.file.size) + '</td><td>' + (l.bloq ? '<i style="color:var(--mut)">se omite</i>' : ('<select style="width:100%" onchange="Informes.masivaSel(' + i + ',this.value)">' + opciones(l.sel) + '</select>')) + '</td></tr>'; }).join('') +
       '</tbody></table></div>' +
@@ -3725,8 +3736,8 @@ var Informes = (function () {
   /* ---------- formulario «Nueva valuación»: PDF por estación o uno para todas ---------- */
   function filaForm(i) {
     var it = Val.items[i] || {}, fs = it.files || [];
-    return '<label class="inf-pick" title="Informe fotográfico de esta estación (opcional)">📎<input type="file" accept="application/pdf,.pdf" multiple style="display:none" onchange="Informes.pickRow(' + i + ',this)"></label>' +
-      (fs.length ? ('<span class="inf-picked">' + fs.length + ' PDF</span>') : '');
+    return '<label class="inf-pick" title="Informe fotográfico de esta estación (opcional)">📎<input type="file" accept="' + ACCEPT + '" multiple style="display:none" onchange="Informes.pickRow(' + i + ',this)"></label>' +
+      (fs.length ? ('<span class="inf-picked">' + fs.length + ' archivo(s)</span>') : '');
   }
   function pickRow(i, inp) { Val.cap(); if (Val.items[i]) Val.items[i].files = [].slice.call(inp.files || []); Val.render(); }
   function bloqueForm() {
