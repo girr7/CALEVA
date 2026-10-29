@@ -2585,7 +2585,7 @@ UI.boot();
           return '<div>'+(add?'Registro agregado':'Registro eliminado')+' — '+esc(subj(q,o))+'</div>'; }
         /* pagos a proveedores: after_data = {pago:{…resumen}, cambios:[{k,c,a,b}]} */
         function detPago(ad){ var pg=ad.pago||{}; var h='<div><b>'+esc(pg.proveedor||'')+'</b>'+(pg.beneficiario&&String(pg.beneficiario).toLowerCase()!==String(pg.proveedor||'').toLowerCase()?(' → '+esc(pg.beneficiario)):'')+' · USD <b>'+num(pg.montoUSD)+'</b> · Bs '+num(pg.montoBs)+(pg.fecha?(' · '+fmtV(pg.fecha)):'')+'<br><span style="color:#41527a">'+esc(pedTxt(pg.pedido||''))+' · ET '+esc(pg.estacion||'')+(pg.concepto?(' · '+esc(pg.concepto)):'')+'</span></div>';
-          (ad.cambios||[]).slice(0,12).forEach(function(c){ h+='<div><span style="color:#41527a">'+esc(c.c||c.k)+':</span> '+fmtF(c.k||'',c.a)+' → <b>'+fmtF(c.k||'',c.b)+'</b></div>'; }); return h; }
+          (ad.cambios||[]).slice(0,12).forEach(function(c){ var f5=function(v){ return (/^(montoUSD|montoBs|monto)$/.test(c.k||'')&&v!=null&&v!=='')?num(v):fmtF(c.k||'',v); }; h+='<div><span style="color:#41527a">'+esc(c.c||c.k)+':</span> '+f5(c.a)+' → <b>'+f5(c.b)+'</b></div>'; }); return h; }
         /* máximo negociado por pedido + ET + proveedor: after_data = {tope:{…}, cambios:[…]} */
         function detTope(ad){ var t=ad.tope||{}; var sal=(+t.monto||0)-(+t.pagado||0); var h='<div><b>'+esc(t.estacion||'')+'</b> · '+esc(t.proveedor||'')+' · máximo USD <b>'+num(t.monto)+'</b><br><span style="color:#41527a">'+esc(pedTxt(t.pedido||''))+' · pagado USD '+num(t.pagado)+' · '+(sal<-0.005?'<b style="color:#e11d48">sobregirado por '+num(-sal)+'</b>':'saldo por cancelar '+num(sal))+'</span></div>';
           (ad.cambios||[]).forEach(function(c){ h+='<div><span style="color:#41527a">'+esc(c.c||c.k)+':</span> '+fmtV(c.a)+' → <b>'+fmtV(c.b)+'</b></div>'; }); return h; }
@@ -3510,7 +3510,7 @@ var Informes = (function () {
   function mb(n) { if (!n) return ''; if (n < 1048576) return Math.max(1, Math.round(n / 1024)) + ' KB'; return (n / 1048576).toLocaleString('es-VE', { maximumFractionDigits: 1 }) + ' MB'; }
   function rid() { return 'i' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
   /* Dropbox no admite \ / : * ? " < > | en nombres; recorta y limpia */
-  function seg(s, max) { s = String(s || '').replace(/[\\\/:*?"<>|\u0000-\u001f]+/g, '-').replace(/\s+/g, ' ').trim(); if (s.length > (max || 80)) s = s.slice(0, max || 80).trim(); return s.replace(/[. ]+$/, '') || 'sin-nombre'; }
+  function seg(s, max) { s = String(s || '').replace(/[\\\/:*?"<>|\u0000-\u001f]+/g, '-').replace(/\.{2,}/g, '.').replace(/\s+/g, ' ').trim(); if (s.length > (max || 80)) s = s.slice(0, max || 80).trim(); return s.replace(/[. ]+$/, '') || 'sin-nombre'; }
   function etq(v) { return (v.val || '') + ' · ' + (v.estacion || '') + ' (pedido ' + pedNum(v.pedido) + ')'; }
   /* ¿Este archivo ya está asociado a alguna valuación? (mismo nombre y tamaño) */
   function duplicado(file) {
@@ -3830,8 +3830,17 @@ var Pagos = (function () {
   var HIST = null;         /* histórico BCV [{fecha, promedio}] ordenado */
 
   /* ---------- utilidades ---------- */
+  /* texto dentro de onclick='…': escapa \ y ' (nombres como D'Angelo) y luego el HTML */
+  function jsq(s) { return escA(String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, "\\'")); }
   function escA(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
   function r2(n) { return Math.round((+n || 0) * 100) / 100; }
+  /* USD con hasta 5 decimales: cuando el banco limita el monto en Bs, USD = Bs ÷ tasa
+     tiene muchos decimales y el Bs solo cuadra con lo transferido si se conservan. */
+  function r5(n) { return Math.round((+n || 0) * 100000) / 100000; }
+  /* Se GUARDA con 5 decimales, pero se MUESTRA con 2 (tabla, totales, control, saldo, sobregiro).
+     money5() solo en el formulario, para ver el USD exacto calculado desde los Bs. */
+  function money(n) { n = +n || 0; if (Math.abs(n) < 0.005) n = 0; return (n < 0 ? '-$' : '$') + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function money5(n) { n = +n || 0; return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 5 }); }
   function bs(n) { return 'Bs ' + ve(n, 2); }
   function hoyISO() { var d = new Date(), z = function (n) { return (n < 10 ? '0' : '') + n; }; return d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate()); }
   function fd(iso) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || '')); return m ? (m[3] + '-' + m[2] + '-' + m[1]) : ''; }
@@ -3839,7 +3848,7 @@ var Pagos = (function () {
   function rid(p) { return (p || 'pg') + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
   function limpio(s) { return String(s || '').replace(/\s+/g, ' ').trim(); }
   function clave(s) { return limpio(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
-  function seg(s, max) { s = String(s || '').replace(/[\\\/:*?"<>|\u0000-\u001f]+/g, '-').replace(/\s+/g, ' ').trim(); if (s.length > (max || 80)) s = s.slice(0, max || 80).trim(); return s.replace(/[. ]+$/, '') || 'sin-nombre'; }
+  function seg(s, max) { s = String(s || '').replace(/[\\\/:*?"<>|\u0000-\u001f]+/g, '-').replace(/\.{2,}/g, '.').replace(/\s+/g, ' ').trim(); if (s.length > (max || 80)) s = s.slice(0, max || 80).trim(); return s.replace(/[. ]+$/, '') || 'sin-nombre'; }
   function extDe(n) { var m = /\.([a-z0-9]+)$/i.exec(String(n || '')); return m ? m[1].toLowerCase() : ''; }
   function esPdf(f) { return extDe((f && (f.path || f.nombre)) || '') === 'pdf'; }
   function mimeDe(f) { var e = extDe((f && (f.path || f.nombre)) || ''); return e === 'pdf' ? 'application/pdf' : e === 'png' ? 'image/png' : 'image/jpeg'; }
@@ -3858,14 +3867,14 @@ var Pagos = (function () {
   function llave(ped, est, prov) { return pedNum(ped) + '|' + clave(est) + '|' + clave(prov); }
   function topes() { return (st.doc && st.doc.topes) || []; }
   function topeDe(ped, est, prov) { var k = llave(ped, est, prov); return topes().filter(function (t) { return llave(t.pedido, t.estacion, t.proveedor) === k; })[0] || null; }
-  function pagadoDe(ped, est, prov, excluirId) { var k = llave(ped, est, prov); return r2(lista().reduce(function (a, p) { return a + ((p.id !== excluirId && llave(p.pedido, p.estacion, p.proveedor) === k) ? (+p.montoUSD || 0) : 0); }, 0)); }
+  function pagadoDe(ped, est, prov, excluirId) { var k = llave(ped, est, prov); return r5(lista().reduce(function (a, p) { return a + ((p.id !== excluirId && llave(p.pedido, p.estacion, p.proveedor) === k) ? (+p.montoUSD || 0) : 0); }, 0)); }
   /* Una fila por pedido + ET + proveedor que tenga máximo o pagos */
   function control() {
     var m = {}, out = [];
     function fila(ped, est, prov) { var k = llave(ped, est, prov); if (!m[k]) { m[k] = { k: k, pedido: pedNum(ped), estacion: limpio(est), proveedor: limpio(prov), tope: null, pagado: 0, n: 0 }; out.push(m[k]); } return m[k]; }
     topes().forEach(function (t) { fila(t.pedido, t.estacion, t.proveedor).tope = t; });
-    lista().forEach(function (p) { var f = fila(p.pedido, p.estacion, p.proveedor); f.pagado = r2(f.pagado + (+p.montoUSD || 0)); f.n++; });
-    out.forEach(function (f) { f.max = f.tope ? (+f.tope.monto || 0) : null; f.saldo = f.tope ? r2(f.max - f.pagado) : null; f.sobre = !!(f.tope && f.saldo < -0.005); });
+    lista().forEach(function (p) { var f = fila(p.pedido, p.estacion, p.proveedor); f.pagado = r5(f.pagado + (+p.montoUSD || 0)); f.n++; });
+    out.forEach(function (f) { f.max = f.tope ? (+f.tope.monto || 0) : null; f.saldo = f.tope ? r5(f.max - f.pagado) : null; f.sobre = !!(f.tope && f.saldo < -0.005); });
     return out;
   }
   function upsertTope(d, ped, est, prov, monto) {
@@ -4008,13 +4017,14 @@ var Pagos = (function () {
       var pc = f.max ? Math.min(100, f.pagado / f.max * 100) : 0;
       var est = !f.tope ? '<span class="pg-chip-sin">Sin máximo</span>' : f.sobre ? '<span class="pg-chip-sobre">SOBREGIRADO</span>' : (f.saldo <= 0.005 ? '<span class="pg-chip-ok">Cancelado</span>' : '<span class="pg-chip-pend">Por cancelar</span>');
       var saldo = !f.tope ? '<span style="color:var(--mut)">—</span>' : f.sobre ? '<b class="pg-rojo">−' + money(-f.saldo) + '</b>' : '<b>' + money(f.saldo) + '</b>';
-      var acc = edC ? ('<span class="pg-lnk" onclick="Pagos.tope(\'' + escA(f.k) + '\')">' + (f.tope ? '✎ máximo' : 'Fijar máximo') + '</span>') : '';
+      var acc = edC ? ('<span class="pg-lnk" onclick="Pagos.tope(\'' + jsq(f.k) + '\')">' + (f.tope ? '✎ máximo' : 'Fijar máximo') + '</span>' +
+        ' <span class="pg-del" title="Eliminar esta línea (mal cargada)" onclick="Pagos.borrarFila(\'' + jsq(f.k) + '\')">🗑</span>') : '';
       return '<tr' + (f.sobre ? ' class="pg-sobre"' : '') + '><td class="mono" title="' + escA(pedTxt(f.pedido)) + '">' + esc(f.pedido) + '</td><td>' + esc(f.estacion) + '</td><td><b>' + esc(f.proveedor) + '</b></td>' +
         '<td class="num">' + (f.tope ? money(f.max) : '<span style="color:var(--mut)">—</span>') + '</td><td class="num">' + money(f.pagado) + ' <span class="pg-mut">(' + f.n + ')</span></td><td class="num">' + saldo + '</td>' +
         '<td><div class="pg-bar"><i class="' + (f.sobre ? 'over' : '') + '" style="width:' + (f.sobre ? 100 : pc.toFixed(1)) + '%"></i></div></td><td class="center">' + est + '</td>' + (edC ? '<td class="center" style="white-space:nowrap">' + acc + '</td>' : '') + '</tr>';
     }).join('');
     var ctrl = '<div class="card"><div class="section-hdr">Control por ET · máximo negociado<span class="section-hdr-right">' + C.length + ' ET/proveedor' + (sinMax ? (' · <b style="color:var(--orange)">' + sinMax + ' sin máximo</b>') : '') + ' · acumulado de todos los años</span></div><div class="section-body">' +
-      '<div style="overflow-x:auto"><table id="tCtrl"><thead><tr><th style="width:92px">Pedido</th><th>ET</th><th>Proveedor</th><th class="num" style="width:110px">Máximo</th><th class="num" style="width:130px">Pagado</th><th class="num" style="width:130px">Saldo por cancelar</th><th style="width:110px"></th><th class="center" style="width:120px">Estado</th>' + (edC ? '<th class="center" style="width:96px"></th>' : '') + '</tr></thead><tbody>' +
+      '<div style="overflow-x:auto"><table id="tCtrl"><thead><tr><th style="width:92px">Pedido</th><th>ET</th><th>Proveedor</th><th class="num" style="width:110px">Máximo</th><th class="num" style="width:130px">Pagado</th><th class="num" style="width:130px">Saldo por cancelar</th><th style="width:110px"></th><th class="center" style="width:120px">Estado</th>' + (edC ? '<th class="center" style="width:118px"></th>' : '') + '</tr></thead><tbody>' +
       (cBody || '<tr><td colspan="' + (edC ? 9 : 8) + '" class="empty">Sin ET con máximo ni pagos</td></tr>') + '</tbody></table></div></div></div>';
     var peds = {}; lista().forEach(function (p) { peds[pedNum(p.pedido)] = 1; });
     var pedOpt = '<option value="">Todos los pedidos</option>' + Object.keys(peds).sort(function (a, b) { return (+a) - (+b); }).map(function (p) { return '<option value="' + escA(p) + '"' + (flt.ped === p ? ' selected' : '') + '>' + esc(pedTxt(p)) + '</option>'; }).join('');
@@ -4056,7 +4066,9 @@ var Pagos = (function () {
   function abrirForm(p) {
     if (!puedeEditar()) { toast('Solo el administrador puede cargar o modificar pagos'); return; }
     if (!st.doc) { toast('Los pagos aún no cargan'); return; }
-    F = { id: p ? p.id : null, antes: p ? JSON.parse(JSON.stringify(p)) : null, comps: p ? (p.comprobantes || []).slice() : [], nuevos: [], tasaManual: !!(p && p.tasaFuente === 'manual') };
+    F = { id: p ? p.id : null, antes: p ? JSON.parse(JSON.stringify(p)) : null, comps: p ? (p.comprobantes || []).slice() : [], nuevos: [], tasaManual: !!(p && p.tasaFuente === 'manual'),
+          /* Bs «fijo» solo si se escribió a mano (no coincide con USD × tasa): así abrir un pago no altera su USD */
+          bsFijo: (p && +p.montoBs && Math.abs(r2((+p.montoUSD || 0) * (+p.tasa || 0)) - (+p.montoBs)) > 0.004) ? +p.montoBs : null };
     var peds = pedidosReales().slice().sort(function (a, b) { return (+pedNum(b.pedido)) - (+pedNum(a.pedido)); });
     if (p && !peds.some(function (x) { return pedNum(x.pedido) === pedNum(p.pedido); })) peds.unshift({ pedido: p.pedido, desc: '' });
     var opts = '<option value="">— pedido —</option>' + peds.map(function (x) { var n = pedNum(x.pedido); return '<option value="' + escA(n) + '"' + (p && pedNum(p.pedido) === n ? ' selected' : '') + '>' + esc(n + (x.desc ? ('  |  ' + x.desc) : '')) + '</option>'; }).join('');
@@ -4075,9 +4087,10 @@ var Pagos = (function () {
       '<div id="pgTope" class="pg-tope"></div>' +
       '<div class="frow"><div class="fld"><label>Fecha del pago *</label><input id="pgFecha" type="date" value="' + escA(p ? p.fecha : hoyISO()) + '" onchange="Pagos._onFecha()"></div>' +
       '<div class="fld"><label>Forma de pago</label><select id="pgForma">' + fOpts.map(function (f) { return '<option' + ((p ? p.forma : FORMAS[0]) === f ? ' selected' : '') + '>' + esc(f) + '</option>'; }).join('') + '</select></div></div>' +
-      '<div class="frow"><div class="fld"><label>Monto USD *</label><input id="pgUSD" type="number" step="0.01" min="0" style="width:140px" value="' + (p ? (+p.montoUSD || '') : '') + '" oninput="Pagos._calc();Pagos._tope()"></div>' +
+      '<div class="frow"><div class="fld"><label>Monto USD *</label><input id="pgUSD" type="number" step="0.00001" min="0" style="width:150px" value="' + (p ? (+p.montoUSD || '') : '') + '" oninput="Pagos._usdMano()"></div>' +
       '<div class="fld"><label>Tasa BCV (Bs/USD)</label><input id="pgTasa" type="number" step="0.0001" min="0" style="width:130px" value="' + (p ? (+p.tasa || '') : '') + '" oninput="Pagos._tasaMano()"></div>' +
-      '<div class="fld"><label>Monto Bs</label><input id="pgBs" readonly style="width:160px;background:#eef1f5;font-weight:700" value=""></div></div>' +
+      '<div class="fld"><label>Monto Bs</label><input id="pgBs" type="number" step="0.01" min="0" style="width:170px;font-weight:700" title="Escriba el monto exacto transferido en Bs y se calcula el USD" oninput="Pagos._bsMano()"></div></div>' +
+      '<div class="hint" id="pgBsInfo" style="margin:-4px 0 4px">USD hasta 5 decimales. Si el banco limita el monto en Bs, escriba los Bs transferidos y el USD se calcula solo.</div>' +
       '<div class="hint" id="pgTasaInfo" style="margin:-4px 0 8px"></div>' +
       '<div class="frow"><div class="fld" style="flex:1"><label>Concepto *</label><input id="pgConc" class="wide" style="min-width:340px" maxlength="300" value="' + escA(p ? p.concepto : '') + '"></div></div>' +
       '<div class="fld"><label>Comprobante(s) · PDF, JPG o PNG (opcional)</label><div id="pgComps"></div>' +
@@ -4125,14 +4138,25 @@ var Pagos = (function () {
     var box = $('pgTope'), out = $('pgTopeCalc'); if (!out || !F) return;
     var c = claveForm(); if (!c) return;
     var t = topeDe(c.ped, c.est, c.prov), max = (F.topeEdit || !t) ? (+F.topeVal || 0) : +t.monto;
-    var pagado = pagadoDe(c.ped, c.est, c.prov, F.id), usd = r2($('pgUSD').value), saldo = r2(max - pagado - usd);
+    var pagado = pagadoDe(c.ped, c.est, c.prov, F.id), usd = r5($('pgUSD').value), saldo = r5(max - pagado - usd);
     box.className = 'pg-tope' + (max && saldo < -0.005 ? ' alarma' : '');
     if (!max) { out.innerHTML = '<span class="pg-mut">Pagado antes: ' + money(pagado) + '</span>'; return; }
     out.innerHTML = 'Pagado antes <b>' + money(pagado) + '</b> · este pago <b>' + money(usd) + '</b> · ' +
       (saldo < -0.005 ? '<b class="pg-rojo">⚠ SOBREGIRO: excede el máximo en ' + money(-saldo) + '</b>' : 'saldo por cancelar después de este pago <b>' + money(saldo) + '</b>');
   }
   function onTerc() { var on = $('pgTerc').checked, b = $('pgBen'); b.disabled = !on; if (on) { if (clave(b.value) === clave($('pgProv').value)) b.value = ''; b.focus(); } else b.value = $('pgProv').value; }
-  function calc() { var u = +$('pgUSD').value || 0, t = +$('pgTasa').value || 0; $('pgBs').value = (u && t) ? bs(r2(u * t)) : ''; }
+  /* Bs = USD × tasa. Si los Bs se escribieron a mano (F.bsFijo), mandan ellos: USD = Bs ÷ tasa (5 decimales). */
+  function calc() {
+    var t = +$('pgTasa').value || 0;
+    if (F.bsFijo != null) { if (t) $('pgUSD').value = r5(F.bsFijo / t); if (document.activeElement !== $('pgBs')) $('pgBs').value = F.bsFijo; }
+    else { var u = +$('pgUSD').value || 0; $('pgBs').value = (u && t) ? r2(u * t).toFixed(2) : ''; }
+    var u2 = +$('pgUSD').value || 0, e = $('pgBsInfo');
+    if (e) e.innerHTML = (F.bsFijo != null && t) ? ('USD calculado desde <b>' + bs(F.bsFijo) + '</b> ÷ ' + ve(t, 4) + ' = <b>' + money5(u2) + '</b> (5 decimales) · comprobación: ' + bs(r2(u2 * t)))
+      : 'USD hasta 5 decimales. Si el banco limita el monto en Bs, escriba los Bs transferidos y el USD se calcula solo.';
+    calcTope();
+  }
+  function usdMano() { F.bsFijo = null; calc(); }
+  function bsMano() { var v = $('pgBs').value; F.bsFijo = (v === '' || !(+v > 0)) ? null : r2(v); if (F.bsFijo == null) $('pgUSD').value = ''; calc(); }
   function tasaMano() { F.tasaManual = true; F.tasaFecha = ''; infoTasa('Tasa escrita a mano.'); calc(); }
   function onFecha() {
     var fe = $('pgFecha').value; if (!fe) return;
@@ -4241,7 +4265,7 @@ var Pagos = (function () {
   function guardar() {
     if (!F || !puedeEditar()) return;
     var ped = $('pgPed').value, est = limpio($('pgEst').value), prov = limpio($('pgProv').value), terc = $('pgTerc').checked;
-    var ben = terc ? limpio($('pgBen').value) : prov, fe = $('pgFecha').value, usd = r2($('pgUSD').value), tasa = +$('pgTasa').value || 0, conc = limpio($('pgConc').value);
+    var ben = terc ? limpio($('pgBen').value) : prov, fe = $('pgFecha').value, usd = r5($('pgUSD').value), tasa = +$('pgTasa').value || 0, conc = limpio($('pgConc').value);
     if (!ped) { toast('Elija el pedido'); return; }
     if (!est) { toast('Indique la ET'); return; }
     if (!prov) { toast('Indique el proveedor'); return; }
@@ -4258,14 +4282,14 @@ var Pagos = (function () {
     prov = canon(prov, proveedores()); ben = terc ? canon(ben, beneficiarios().concat(proveedores())) : prov;
     var tExist = topeDe(ped, estOk, prov), topeNuevo = null;
     if (!tExist || F.topeEdit) { topeNuevo = r2(F.topeVal); if (!(topeNuevo > 0)) { toast('Indique el monto máximo negociado para ' + estOk + ' · ' + prov); var ti = $('pgTopeMonto'); if (ti) ti.focus(); return; } }
-    var maxEf = topeNuevo != null ? topeNuevo : +tExist.monto, pagAntes = pagadoDe(ped, estOk, prov, F.id), exceso = r2(pagAntes + usd - maxEf);
+    var maxEf = topeNuevo != null ? topeNuevo : +tExist.monto, pagAntes = pagadoDe(ped, estOk, prov, F.id), exceso = r5(pagAntes + usd - maxEf);
     if (exceso > 0.005 && !confirm('⚠ ALARMA DE SOBREGIRO\n\n' + estOk + ' · ' + prov + ' (pedido ' + pedNum(ped) + ')\nMáximo negociado: ' + money(maxEf) + '\nPagado antes: ' + money(pagAntes) + '\nEste pago: ' + money(usd) +
       '\n\nExcede el máximo en ' + money(exceso) + '. ¿Registrar el pago igual?')) return;
     var topeAntes = tExist ? JSON.parse(JSON.stringify(tExist)) : null, topeGuardado = null;
     var ahora = new Date().toISOString();
     var p = F.id ? JSON.parse(JSON.stringify(porId(F.id) || F.antes)) : { id: rid('pg'), creado: ahora, por: yo() };
     p.fecha = fe; p.pedido = pedNum(ped); p.estacion = estOk; p.proveedor = prov; p.beneficiario = ben; p.tercero = !!(terc && clave(ben) !== clave(prov));
-    p.forma = $('pgForma').value; p.montoUSD = usd; p.tasa = tasa; p.montoBs = r2(usd * tasa); p.concepto = conc;
+    p.forma = $('pgForma').value; p.montoUSD = usd; p.tasa = tasa; p.montoBs = (F.bsFijo != null && Math.abs(r2(usd * tasa) - F.bsFijo) <= 0.05) ? r2(F.bsFijo) : r2(usd * tasa); p.concepto = conc;
     p.tasaFuente = F.tasaManual ? 'manual' : 'BCV'; p.tasaFecha = F.tasaManual ? '' : (F.tasaFecha || p.tasaFecha || '');
     if (F.id) { p.mod = ahora; p.modPor = yo(); }
     var nuevos = F.nuevos.slice(), comps = F.comps.slice(), antes = F.antes, esEdicion = !!F.id;
@@ -4317,8 +4341,8 @@ var Pagos = (function () {
     document.getElementById('modalBody').innerHTML =
       '<div class="info-pedido" style="margin-bottom:10px"><span>Pedido <b>' + esc(f.pedido) + '</b></span><span>ET <b>' + esc(f.estacion) + '</b></span><span>Proveedor <b>' + esc(f.proveedor) + '</b></span><span>Pagado <b>' + money(f.pagado) + '</b> (' + f.n + ' pago(s))</span></div>' +
       '<div class="frow"><div class="fld"><label>Monto máximo negociado (USD) *</label><input id="pgTopeEd" type="number" step="0.01" min="0" style="width:160px" value="' + (f.tope ? f.max : '') + '"></div></div>' +
-      '<div class="frow" style="margin-top:8px"><button class="btn g" onclick="Pagos._guardarTope(\'' + escA(k) + '\')">Guardar</button>' +
-      (f.tope && !f.n ? '<button class="btn r" onclick="Pagos._borrarTope(\'' + escA(k) + '\')">Eliminar máximo</button>' : '') + '<button class="btn gr" onclick="UI.cerrarModal()">Cancelar</button></div>' +
+      '<div class="frow" style="margin-top:8px"><button class="btn g" onclick="Pagos._guardarTope(\'' + jsq(k) + '\')">Guardar</button>' +
+      (f.tope && !f.n ? '<button class="btn r" onclick="Pagos._borrarTope(\'' + jsq(k) + '\')">Eliminar máximo</button>' : '') + '<button class="btn gr" onclick="UI.cerrarModal()">Cancelar</button></div>' +
       '<div class="hint">El máximo es el total que se puede pagar a este proveedor por esta ET en este pedido. Todos los pagos asociados van contra él.</div>';
     document.getElementById('modalBg').classList.add('on');
     var i = $('pgTopeEd'); if (i) i.focus();
@@ -4340,6 +4364,26 @@ var Pagos = (function () {
     guardarOp(function (d) { d.topes = d.topes.filter(function (x) { return llave(x.pedido, x.estacion, x.proveedor) !== k; }); })
       .then(function () { auditarTope('pago_tope_baja', null, t); UI.cerrarModal(); render(); toast('Máximo eliminado'); })
       .catch(function (e) { alert('No se eliminó:\n' + e.message); });
+  }
+
+  /* Línea mal cargada (pedido / ET / proveedor equivocados): borra su máximo y TODOS sus pagos.
+     Doble confirmación si tiene pagos; cada baja queda en la auditoría. Dropbox no se toca. */
+  function borrarFila(k) {
+    if (!puedeEditar()) { toast('Solo el administrador puede eliminar'); return; }
+    var f = filaCtrl(k); if (!f) return;
+    var ps = lista().filter(function (p) { return llave(p.pedido, p.estacion, p.proveedor) === k; });
+    if (!confirm('¿Eliminar esta línea del control?\n\nPedido ' + f.pedido + '\nET: ' + f.estacion + '\nProveedor: ' + f.proveedor + (f.tope ? ('\nMáximo negociado: ' + money(f.max)) : '') +
+      (ps.length ? ('\n\n⚠ También se eliminarán sus ' + ps.length + ' pago(s) por ' + money(f.pagado) + '.\nLos comprobantes NO se borran de Dropbox.') : ''))) return;
+    if (ps.length && !confirm('Confirme de nuevo: se eliminarán ' + ps.length + ' pago(s) por ' + money(f.pagado) + ' de ' + f.estacion + ' · ' + f.proveedor + '.\nQueda registrado en la auditoría.')) return;
+    var t = f.tope ? JSON.parse(JSON.stringify(f.tope)) : null;
+    guardarOp(function (d) {
+      d.topes = d.topes.filter(function (x) { return llave(x.pedido, x.estacion, x.proveedor) !== k; });
+      d.pagos = d.pagos.filter(function (x) { return llave(x.pedido, x.estacion, x.proveedor) !== k; });
+    }).then(function () {
+      ps.forEach(function (p) { auditar('pago_proveedor_baja', p, null); });
+      if (t) auditarTope('pago_tope_baja', null, t);
+      render(); toast('Línea eliminada' + (ps.length ? (' con ' + ps.length + ' pago(s)') : ''));
+    }).catch(function (e) { alert('No se eliminó:\n' + e.message); });
   }
 
   /* ---------- Excel ---------- */
@@ -4367,7 +4411,7 @@ var Pagos = (function () {
       '#infPdfOv .pp-img img{max-width:100%;max-height:100%;object-fit:contain;background:#fff;box-shadow:0 6px 24px rgba(0,0,0,.4)}' +
       '.pg-tope{margin:2px 0 10px;padding:9px 12px;border:1px solid #cfe0f5;border-left:4px solid #1E5AA8;border-radius:8px;background:#f5f9ff;font-size:12.5px;line-height:1.7}' +
       '.pg-tope.alarma{border-color:#f3b4b4;border-left-color:#e11d48;background:#fff1f1}.pg-tope input{padding:3px 8px}' +
-      '.pg-rojo{color:#e11d48}.pg-lnk{cursor:pointer;color:var(--blue);font-weight:700;font-size:12px}' +
+      '.pg-del{cursor:pointer;color:var(--red);font-weight:700;margin-left:8px}.pg-rojo{color:#e11d48}.pg-lnk{cursor:pointer;color:var(--blue);font-weight:700;font-size:12px}' +
       '.pg-alarma{margin:0 0 14px;padding:11px 14px;border:1px solid #f3b4b4;border-left:5px solid #e11d48;border-radius:0 10px 10px 0;background:#fff1f1;color:#9f1239;font-size:12.5px;line-height:1.6}' +
       '#tCtrl tr.pg-sobre td,#tPagos tr.pg-sobre td{background:#fff1f1}#tPagos tr.pg-sobre td:first-child,#tCtrl tr.pg-sobre td:first-child{box-shadow:inset 4px 0 #e11d48;padding-left:12px}' +
       '.pg-bar{height:7px;background:#e8edf4;border-radius:9px;overflow:hidden;min-width:70px}.pg-bar i{display:block;height:100%;background:#22a06b}.pg-bar i.over{background:#e11d48}' +
@@ -4379,10 +4423,10 @@ var Pagos = (function () {
   }
 
   return { render: render, recargar: recargar, filtro: filtro, nuevo: function () { abrirForm(null); }, editar: function (id) { var p = porId(id); if (p) abrirForm(p); },
-           borrar: borrar, comprobantes: comprobantes, exportar: exportar, tope: tope, _guardarTope: guardarTope, _borrarTope: borrarTope,
+           borrar: borrar, comprobantes: comprobantes, exportar: exportar, tope: tope, borrarFila: borrarFila, _guardarTope: guardarTope, _borrarTope: borrarTope,
            _tope: pintarTope, _topeEdit: topeEdit, _topeVal: function (v) { if (F) { F.topeVal = v; calcTope(); } }, _control: control,
            _onPed: function () { onPed(false); }, _onProv: onProv, _onTerc: onTerc, _calc: calc, _tasaMano: tasaMano, _onFecha: onFecha,
-           _pick: pick, _quitar: function (k) { F.comps.splice(k, 1); pintarComps(); }, _quitarNuevo: function (k) { F.nuevos.splice(k, 1); pintarComps(); },
+           _usdMano: usdMano, _bsMano: bsMano, _pick: pick, _quitar: function (k) { F.comps.splice(k, 1); pintarComps(); }, _quitarNuevo: function (k) { F.nuevos.splice(k, 1); pintarComps(); },
            _verForm: function (k) { var f = F && F.comps[k]; if (f) ver(f, 'Comprobante', $('pgProv').value); },
            _verPago: function (id, k) { var p = porId(id); if (p && p.comprobantes[k]) ver(p.comprobantes[k], p.proveedor + ' · ' + money(p.montoUSD), 'Pedido ' + pedNum(p.pedido) + ' · ' + p.estacion); },
            _guardar: guardar, _tasaDe: tasaDe, _estado: function () { return st; } };
