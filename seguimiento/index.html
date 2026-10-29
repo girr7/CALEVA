@@ -4051,7 +4051,7 @@ var Pagos = (function () {
     var tb = '<div class="card"><div class="section-hdr">Pagos a proveedores<span class="section-hdr-right">' + L.length + ' de ' + lista().length + ' pago(s)' + (anio ? (' · año ' + anio + ' (selector de arriba)') : '') + (ed ? '' : ' · solo lectura') + '</span></div><div class="section-body">' +
       '<div class="toolbar"><input id="pgBuscar" placeholder="Buscar proveedor, beneficiario, concepto…" style="min-width:230px" value="' + escA(flt.q) + '" oninput="Pagos.filtro(\'q\',this.value)">' +
       '<select onchange="Pagos.filtro(\'ped\',this.value)">' + pedOpt + '</select><select onchange="Pagos.filtro(\'est\',this.value)">' + estOpt + '</select><select onchange="Pagos.filtro(\'prov\',this.value)">' + provOpt + '</select>' +
-      '<span style="flex:1"></span>' + (ed ? '<button class="btn o" id="pgCorrBtn" style="display:none" onclick="Pagos.corregirSel()">✎ Corregir seleccionados</button>' : '') + '<button class="btn gr" onclick="Pagos.exportar()">⬇ Excel</button>' + (ed ? '<button class="btn g" onclick="Pagos.nuevo()">＋ Nuevo pago</button>' : '') + '</div>' +
+      '<span style="flex:1"></span>' + (ed ? '<button class="btn o" id="pgCorrBtn" style="display:none" onclick="Pagos.corregirSel()">✎ Corregir seleccionados</button><button class="btn gr" title="Mueve en Dropbox los comprobantes que quedaron en la carpeta de otro pedido / ET" onclick="Pagos.ordenarDropbox()">📁 Ordenar Dropbox</button>' : '') + '<button class="btn gr" onclick="Pagos.exportar()">⬇ Excel</button>' + (ed ? '<button class="btn g" onclick="Pagos.nuevo()">＋ Nuevo pago</button>' : '') + '</div>' +
       '<div style="overflow-x:auto"><table id="tPagos"><thead><tr>' + (ed ? '<th class="center pg-chk" style="width:30px"><input type="checkbox" id="pgSelAll" title="Marcar todos los pagos visibles" onchange="Pagos._selTodos(this.checked)"></th>' : '') + '<th class="center" style="width:84px">Fecha</th><th style="width:92px">Pedido</th><th>ET</th><th>Proveedor</th><th>Beneficiario</th><th>Concepto</th><th style="width:90px">Forma</th>' +
       '<th class="num" style="width:100px">USD</th><th class="num" style="width:86px">Tasa</th><th class="num" style="width:120px">Bs</th><th class="center" style="width:64px">Comp.</th>' + (ed ? '<th class="center" style="width:62px"></th>' : '') + '</tr></thead><tbody>' +
       (body || '<tr><td colspan="' + nc + '" class="empty">' + (lista().length ? 'Ningún pago coincide con el filtro' : 'Todavía no hay pagos registrados') + '</td></tr>') + foot + '</tbody></table></div></div></div>';
@@ -4208,16 +4208,18 @@ var Pagos = (function () {
         if (!r.ok || d.error) {
           if (r.status === 404) throw Error('Falta desplegar la función «informes-dropbox» en Supabase');
           if (r.status === 400 && /Ruta/.test(d.error || '')) throw Error('La función «informes-dropbox» no acepta comprobantes todavía: despliegue la versión nueva del código');
+          if (r.status === 400 && /Acción no reconocida/.test(d.error || '')) throw Error('La función «informes-dropbox» no sabe mover archivos todavía: despliegue la versión nueva del código');
           throw Error(d.error || d.message || ('Error ' + r.status));
         }
         return d; }); });
   }
   /* /Pagos/<pedido · desc>/<ET>/<fecha>_<proveedor>_<hora>_<archivo>.<pdf|jpg|png> */
+  function carpeta(p) { var pd = pedidoPorNum(p.pedido); return '/Pagos/' + seg(pedNum(p.pedido) + (pd && pd.desc ? (' · ' + pd.desc) : ''), 90) + '/' + seg(p.estacion, 80) + '/'; }
   function ruta(p, nombre) {
-    var pd = pedidoPorNum(p.pedido), d = new Date(), z = function (n) { return (n < 10 ? '0' : '') + n; };
+    var d = new Date(), z = function (n) { return (n < 10 ? '0' : '') + n; };
     var stamp = z(d.getHours()) + z(d.getMinutes()) + z(d.getSeconds()) + '_' + Math.random().toString(36).slice(2, 5);
     var ext = extDe(nombre), base = String(nombre || 'comprobante').replace(EXT, '');
-    return '/Pagos/' + seg(pedNum(p.pedido) + (pd && pd.desc ? (' · ' + pd.desc) : ''), 90) + '/' + seg(p.estacion, 80) + '/' + (p.fecha || hoyISO()) + '_' + seg(p.proveedor, 40) + '_' + stamp + '_' + seg(base, 60) + '.' + ext;
+    return carpeta(p) + (p.fecha || hoyISO()) + '_' + seg(p.proveedor, 40) + '_' + stamp + '_' + seg(base, 60) + '.' + ext;
   }
   function subirUno(file, p) {
     var path = ruta(p, file.name);
@@ -4319,6 +4321,8 @@ var Pagos = (function () {
       });
     }).then(function () {
       auditar(esEdicion ? 'pago_proveedor_edicion' : 'pago_proveedor_alta', p, antes);
+      if (esEdicion && antes && tareasCarpetas([p], (function (o) { o[p.id] = antes.proveedor; return o; })({})).length)
+        moverComprobantes([p], (function (o) { o[p.id] = antes.proveedor; return o; })({})).then(function (r) { render(); var x = avisoMovidos(r); if (x) toast('Pago actualizado' + x); });
       if (topeGuardado) auditarTope(topeAntes ? 'pago_tope_edicion' : 'pago_tope_alta', topeAntes, topeGuardado);
       F = null; UI.cerrarModal(); render();
       toast((esEdicion ? 'Pago actualizado' : ('Pago registrado: ' + prov + ' · ' + money(usd))) + (exceso > 0.005 ? ' · ⚠ ET SOBREGIRADA' : ''));
@@ -4388,6 +4392,61 @@ var Pagos = (function () {
       if (t) auditarTope('pago_tope_baja', null, t);
       render(); toast('Línea eliminada' + (ps.length ? (' con ' + ps.length + ' pago(s)') : ''));
     }).catch(function (e) { alert('No se eliminó:\n' + e.message); });
+  }
+
+  /* ---------- carpetas de Dropbox: cada comprobante vive en /Pagos/<pedido · desc>/<ET>/ ----------
+     Al corregir pedido / ET / proveedor se MUEVE el archivo (Dropbox files/move_v2 vía la función);
+     si cambió el proveedor también se actualiza en el nombre. Nunca se borra nada. */
+  function dirDe(path) { return String(path || '').slice(0, String(path || '').lastIndexOf('/') + 1); }
+  function destinoComp(p, c, provAntes) {
+    var nom = c.path.slice(c.path.lastIndexOf('/') + 1);
+    if (provAntes && clave(provAntes) !== clave(p.proveedor)) {
+      var pre = '_' + seg(provAntes, 40) + '_', i = nom.indexOf(pre);
+      if (i >= 0 && i <= 11) nom = nom.slice(0, i) + '_' + seg(p.proveedor, 40) + '_' + nom.slice(i + pre.length);
+    }
+    return carpeta(p) + nom;
+  }
+  function tareasCarpetas(lst, provAntes) {
+    var out = [];
+    lst.forEach(function (p) { (p.comprobantes || []).forEach(function (c) {
+      if (!c.path || c.path.indexOf('/Pagos/') !== 0) return;
+      var to = destinoComp(p, c, provAntes && provAntes[p.id]);
+      if (to.toLowerCase() !== c.path.toLowerCase()) out.push({ pid: p.id, cid: c.id, from: c.path, to: to });
+    }); });
+    return out;
+  }
+  function moverComprobantes(lst, provAntes) {
+    var tareas = tareasCarpetas(lst, provAntes);
+    if (!tareas.length || !Store.cloud()) return Promise.resolve({ ok: 0, err: [], n: tareas.length });
+    var hechos = [], err = [], i = 0;
+    function sig() {
+      if (i >= tareas.length) return Promise.resolve();
+      var t = tareas[i++];
+      return llamar({ accion: 'mover', from: t.from, to: t.to }).then(function (d) { t.nuevo = d.path || t.to; hechos.push(t); }, function (e) { err.push(t.from.split('/').pop() + ': ' + e.message); }).then(sig);
+    }
+    return sig().then(function () {
+      if (!hechos.length) return;
+      return guardarOp(function (d) { hechos.forEach(function (t) {
+        var p = d.pagos.filter(function (x) { return x.id === t.pid; })[0]; if (!p) return;
+        (p.comprobantes || []).forEach(function (c) { if ((t.cid && c.id === t.cid) || c.path === t.from) c.path = t.nuevo; });
+      }); });
+    }).then(function () { return { ok: hechos.length, err: err, n: tareas.length }; });
+  }
+  function avisoMovidos(r) {
+    if (!r || !r.n) return '';
+    if (r.err.length) alert('Comprobantes que no se pudieron mover en Dropbox (' + r.err.length + '):\n' + r.err.join('\n') + '\n\nPuede reintentar con «📁 Ordenar Dropbox».');
+    return r.ok ? (' · ' + r.ok + ' comprobante(s) movido(s) en Dropbox') : '';
+  }
+  /* Botón: revisa TODOS los pagos y mueve lo que esté fuera de su carpeta */
+  function ordenarDropbox() {
+    if (!puedeEditar()) { toast('Solo el administrador'); return; }
+    if (!Store.cloud()) { toast('Requiere conexión con la nube'); return; }
+    var t = tareasCarpetas(lista(), null);
+    if (!t.length) { toast('Todos los comprobantes ya están en la carpeta de su pedido y ET'); return; }
+    if (!confirm('Hay ' + t.length + ' comprobante(s) en una carpeta que ya no corresponde a su pedido / ET.\n\nEjemplo:\n' + t[0].from + '\n→ ' + t[0].to + '\n\n¿Moverlos en Dropbox?')) return;
+    toast('Moviendo ' + t.length + ' comprobante(s)…');
+    moverComprobantes(lista(), null).then(function (r) { render(); var x = avisoMovidos(r); toast(r.ok ? x.replace(/^ · /, '') : 'No se movió ningún archivo'); })
+      .catch(function (e) { alert('No se pudo ordenar:\n' + e.message); });
   }
 
   /* ---------- corrección masiva: pedido / ET / proveedor de varios pagos a la vez ---------- */
@@ -4500,7 +4559,11 @@ var Pagos = (function () {
         } else auditarTope('pago_tope_baja', null, pl.t);
       });
       sel = {}; MV = null; UI.cerrarModal(); render();
-      toast(despues.length + ' pago(s) corregido(s)' + (mv.length ? (' · ' + mv.length + ' máximo(s) movido(s)') : ''));
+      var msg = despues.length + ' pago(s) corregido(s)' + (mv.length ? (' · ' + mv.length + ' máximo(s) movido(s)') : '');
+      var pa = {}; despues.forEach(function (p) { pa[p.id] = antes[p.id] && antes[p.id].proveedor; });
+      if (!tareasCarpetas(despues, pa).length) { toast(msg); return; }
+      toast(msg + ' · moviendo comprobantes en Dropbox…');
+      return moverComprobantes(despues, pa).then(function (r) { render(); toast(msg + avisoMovidos(r)); });
     }).catch(function (e) { if (btn) btn.disabled = false; alert('No se aplicó la corrección:\n' + e.message); });
   }
 
@@ -4542,7 +4605,7 @@ var Pagos = (function () {
   }
 
   return { render: render, recargar: recargar, filtro: filtro, nuevo: function () { abrirForm(null); }, editar: function (id) { var p = porId(id); if (p) abrirForm(p); },
-           borrar: borrar, comprobantes: comprobantes, exportar: exportar, tope: tope, borrarFila: borrarFila, corregirSel: corregirSel, corregirLinea: corregirLinea, _sel: marcar, _selTodos: marcarTodos, _mvPed: mvPed, _mvAplicar: mvAplicar, _guardarTope: guardarTope, _borrarTope: borrarTope,
+           borrar: borrar, comprobantes: comprobantes, exportar: exportar, tope: tope, borrarFila: borrarFila, corregirSel: corregirSel, ordenarDropbox: ordenarDropbox, _tareasCarpetas: function () { return tareasCarpetas(lista(), null); }, corregirLinea: corregirLinea, _sel: marcar, _selTodos: marcarTodos, _mvPed: mvPed, _mvAplicar: mvAplicar, _guardarTope: guardarTope, _borrarTope: borrarTope,
            _tope: pintarTope, _topeEdit: topeEdit, _topeVal: function (v) { if (F) { F.topeVal = v; calcTope(); } }, _control: control,
            _onPed: function () { onPed(false); }, _onProv: onProv, _onTerc: onTerc, _calc: calc, _tasaMano: tasaMano, _onFecha: onFecha,
            _usdMano: usdMano, _bsMano: bsMano, _pick: pick, _quitar: function (k) { F.comps.splice(k, 1); pintarComps(); }, _quitarNuevo: function (k) { F.nuevos.splice(k, 1); pintarComps(); },
