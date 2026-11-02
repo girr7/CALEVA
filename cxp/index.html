@@ -1232,8 +1232,8 @@ var Calc = {
   estado: function (d) {
     if (d.anulado) return 'Anulado';
     if (typeof Caja !== 'undefined' && Caja.esGasto(d)) return Caja.estadoGasto(d);
+    if (!Calc.retenida(d)) return 'Por retener';   /* antes que «Pagado»: una nota pagada que pasa a factura aún debe retenerse */
     if (Calc.saldo(d) <= 0.005 && Calc.pagado(d) > 0) return 'Pagado';
-    if (!Calc.retenida(d)) return 'Por retener';
     if (Calc.pagado(d) > 0) return 'Parcial';
     return 'Pendiente';
   },
@@ -1276,18 +1276,44 @@ var Seg = {
     if (cur && !L.some(function (x) { return x.pedido === cur; })) L.unshift({ pedido: cur, desc: '(no está en Seguimiento)' });
     return '<option value="">' + (vacio || '— sin pedido —') + '</option>' + L.map(function (x) { return '<option value="' + esc(x.pedido) + '"' + (x.pedido === cur ? ' selected' : '') + '>' + esc(x.pedido + '  |  ' + x.desc + (x.cerrado ? '  (culminado)' : '')) + '</option>'; }).join('');
   },
+  /* ET ya usadas en Cuentas por pagar: del pedido, o de cualquier otro */
+  usadas: function (ped, delPedido) {
+    var m = {}; if (typeof DB === 'undefined' || !DB) return [];
+    DB.documentos.concat(DB.cajas || []).forEach(function (d) { var e = String(d.et || '').trim(); if (e && (String(d.pedido || '') === String(ped || '')) === delPedido) m[clave(e)] = e; });
+    return Object.keys(m).map(function (k) { return m[k]; });
+  },
   optET: function (ped, cur) {
-    var propias = (ped && this.d.et[ped]) || [], ya = {}; cur = String(cur || '');
+    var propias = ((ped && this.d.et[ped]) || []).slice(), ya = {}; cur = String(cur || '');
     propias.forEach(function (e) { ya[clave(e)] = 1; });
-    var otras = this.d.catalogo.filter(function (e) { return !ya[clave(e)]; });
+    if (ped) this.usadas(ped, true).forEach(function (e) { if (!ya[clave(e)]) { ya[clave(e)] = 1; propias.push(e); } });
+    propias.sort(function (a, b) { return a.localeCompare(b, 'es'); });
+    var otras = this.d.catalogo.slice();
+    this.usadas(ped, false).concat(ped ? [] : this.usadas(ped, true)).forEach(function (e) { if (!otras.some(function (o) { return clave(o) === clave(e); })) otras.push(e); });
+    otras = otras.filter(function (e) { return !ya[clave(e)]; }).sort(function (a, b) { return String(a).localeCompare(String(b), 'es'); });
     var opt = function (e) { return '<option value="' + esc(e) + '"' + (clave(e) === clave(cur) ? ' selected' : '') + '>' + esc(e) + '</option>'; };
     var h = '<option value="">— sin ET —</option>';
     if (cur && !propias.concat(otras).some(function (e) { return clave(e) === clave(cur); })) h += '<option value="' + esc(cur) + '" selected>' + esc(cur) + '</option>';
     if (propias.length) h += '<optgroup label="ET del pedido ' + esc(ped) + '">' + propias.map(opt).join('') + '</optgroup>';
     if (otras.length) h += '<optgroup label="' + (ped ? 'Otras ET del catálogo' : 'Catálogo de ET') + '">' + otras.map(opt).join('') + '</optgroup>';
-    return h;
+    return h + '<option value="' + Seg.NUEVA_ET + '">＋ Nueva ET…</option>';
+  },
+  NUEVA_ET: '__nueva_et',
+  nuevaET: function (sel) {
+    var v = String(prompt('Nombre de la nueva ET:') || '').replace(/\s+/g, ' ').trim().toUpperCase();
+    if (!v) { sel.value = sel._prev || ''; return; }
+    var ex = [].filter.call(sel.options, function (o) { return o.value !== Seg.NUEVA_ET && clave(o.value) === clave(v); })[0];
+    if (ex) { sel.value = ex.value; toast('Esa ET ya existe: quedó seleccionada'); return; }
+    var o = document.createElement('option'); o.value = v; o.textContent = v;
+    sel.insertBefore(o, sel.querySelector('option[value="' + Seg.NUEVA_ET + '"]')); sel.value = v;
+    Seg.d.catalogo = (Seg.d.catalogo || []).concat([v]);
+    /* un solo catálogo: la ET también queda en Seguimiento */
+    if (Store.cloud()) Nube.rpc('cxp_agregar_et', { p_et: v }).then(function () {
+      Nube.auditar({ ent: 'conf', ref: v, accion: 'ET agregada al catálogo', sujeto: v, resumen: 'Disponible también en Seguimiento', modulo: 'Configuración', fecha: new Date().toISOString(), actor: Aud.actor() }); Nube.drenar();
+    }).catch(function (e) { toast('La ET queda en este documento, pero no llegó al catálogo de Seguimiento: ' + e.message); });
   }
 };
+document.addEventListener('focusin', function (e) { var t = e.target; if (t && t.tagName === 'SELECT' && t.value !== Seg.NUEVA_ET) t._prev = t.value; });
+document.addEventListener('change', function (e) { var t = e.target; if (t && t.tagName === 'SELECT' && t.value === Seg.NUEVA_ET) Seg.nuevaET(t); else if (t && t.tagName === 'SELECT') t._prev = t.value; });
 
 /* ═══════════════ PROVEEDORES ═══════════════ */
 var Prov = {
@@ -1450,7 +1476,7 @@ var Docs = {
       return '<tr' + (ven ? ' class="cx-venc"' : '') + '><td class="center">' + fdmy(d.fecha) + '</td><td>' + TIPOS[d.tipo] + '</td><td class="mono">' + esc(d.numero) + '</td><td><b>' + esc(nomDoc(d)) + '</b></td>' +
         '<td class="center">' + (d.vence ? fdmy(d.vence) + (e !== 'Pagado' && e !== 'Anulado' && dv != null ? '<div class="cx-dias' + (dv < 0 ? ' cx-rojo' : dv <= 7 ? ' cx-nar' : '') + '">' + (dv < 0 ? 'vencido ' + (-dv) + ' d' : dv === 0 ? 'vence hoy' : 'en ' + dv + ' d') + '</div>' : '') : '—') + '</td>' +
         '<td class="center">' + d.moneda + '</td>' + (d.tipo === 'factura' ? '<td class="num">' + fmt(d.base) + '</td><td class="num">' + fmt(d.iva) + '</td>' : '<td class="num cx-mut">—</td><td class="num cx-mut">—</td>') + '<td class="num"><b>' + fmt(d.total) + '</b></td><td class="num">' + (Calc.retDoc(d) ? '−' + fmt(Calc.retDoc(d)) : '<span class="cx-mut">—</span>') + '</td>' +
-        '<td class="num">' + fmt(Calc.pagado(d)) + '</td><td class="num"><b>' + fmt(Math.max(0, Calc.saldo(d))) + '</b></td>' +
+        '<td class="num">' + fmt(Calc.pagado(d)) + '</td><td class="num"><b>' + fmt(Math.max(0, Calc.saldo(d))) + '</b>' + (Calc.saldo(d) < -0.005 ? '<div class="cx-dias cx-rojo">pagado de más ' + fmt(-Calc.saldo(d)) + '</div>' : '') + '</td>' +
         '<td class="center"><span class="badge2 ' + cls + '">' + e + '</span></td><td class="center" style="white-space:nowrap">' + acc + '</td></tr>';
     }).join('');
     $('tab-docs').innerHTML =
@@ -1474,7 +1500,7 @@ var Docs = {
     if (d && Caja.esGasto(d)) { Caja.gasto(d.cajaId, d.id); return; }
     if (d && Calc.rets(d).length && !Rol.esAdmin()) { toast('Tiene retenciones emitidas: solo el administrador puede editarlo'); return; }
     d = d || { tipo: 'factura', provId: '', numero: '', control: '', fecha: hoy(), vence: '', moneda: 'USD', tasa: '',  /* referencia usual: USD */ total: '', base: '', alic: DB.config.alicuota, iva: '', exento: 0, obs: '', pedido: '', et: '' };
-    this.F = { id: id || null, venceMano: !!(id && d.vence) };
+    this.F = { id: id || null, venceMano: !!(id && d.vence), tipoIni: d.tipo };
     var p = provDe(d.provId);
     var dl = '<datalist id="dcProvDL">' + DB.proveedores.map(function (x) { return '<option value="' + esc(Prov.etiqueta(x)) + '">'; }).join('') + '</datalist>';
     UI.modal(id ? 'Editar ' + TIPOS[d.tipo].toLowerCase() + ' ' + d.numero : 'Nuevo documento por pagar', dl +
@@ -1491,7 +1517,7 @@ var Docs = {
       Fm.c(6, 'Equivalente en Bs', '<div class="cxval" id="dcBsInfo">—</div>', '', 'cx-tasa') +
       '<div class="cxsec" id="dcSecMon">Montos de la factura</div>' +
       Fm.c(3, 'Base imponible *', Fm.n('dcBase', d.base, 2, 'oninput="Docs.calc()"'), '', 'cx-fact') +
-      Fm.c(2, 'Alícuota IVA', Fm.sel('dcAlic', [['16', '16%'], ['8', '8%'], ['0', '0%']], String(+d.alic), 'onchange="Docs.calc()"'), '', 'cx-fact') +
+      Fm.c(2, 'Alícuota IVA', Fm.sel('dcAlic', [['16', '16%'], ['8', '8%'], ['0', '0%']], String(d.tipo === 'factura' ? +d.alic : DB.config.alicuota), 'onchange="Docs.calc()"'), '', 'cx-fact') +
       Fm.c(2, 'IVA', Fm.n('dcIva', d.iva, 2, 'oninput="Docs.F.ivaMano=true;Docs.calc(true)"'), 'Calculado; editable', 'cx-fact') +
       Fm.c(2, 'Exento', Fm.n('dcExe', +d.exento || '', 2, 'oninput="Docs.calc()"'), 'Sin derecho a crédito', 'cx-fact') +
       Fm.c(3, 'Total del documento *', Fm.n('dcTotal', d.total, 2, 'class="n cx-fuerte"'), '', '', 'dcTotInfo') +
@@ -1514,7 +1540,8 @@ var Docs = {
     $('dcEt').innerHTML = Seg.optET(p, cur);
     $('dcEtInfo').textContent = p ? (n ? n + ' ET con valuaciones en este pedido' : 'Este pedido aún no tiene ET valuadas: elija del catálogo') : '';
   },
-  onTipo: function () { var fa = $('dcTipo').value === 'factura'; [].forEach.call(document.querySelectorAll('#modalBody .cx-fact'), function (e) { e.style.display = fa ? '' : 'none'; }); $('dcSecMon').textContent = fa ? 'Montos de la factura' : 'Monto del documento'; this.calc(); },
+  onTipo: function () { var fa = $('dcTipo').value === 'factura'; [].forEach.call(document.querySelectorAll('#modalBody .cx-fact'), function (e) { e.style.display = fa ? '' : 'none'; }); $('dcSecMon').textContent = fa ? 'Montos de la factura' : 'Monto del documento';
+    $('dcTotInfo').textContent = fa && this.F.id && this.F.tipoIni !== 'factura' ? 'Pasa a factura: conserva sus pagos y queda por retener' : ''; this.calc(); },
   onProv: function (ini) {
     var p = Prov.buscar($('dcProv').value), i = $('dcProvInfo');
     /* el «change» se repite al salir de la casilla (p. ej. al hacer clic en «Crear este proveedor»):
@@ -1558,7 +1585,15 @@ var Docs = {
     if (m !== 'Bs' && !(d.tasa > 0)) { toast('Falta la tasa BCV'); return; }
     if (fa && !(d.base > 0) && !(d.exento > 0)) { toast('Indique la base imponible'); return; }
     if (fa && Math.abs(d.base + d.iva + d.exento - d.total) > 0.011 && !confirm('Base + IVA + exento (' + fmt(d.base + d.iva + d.exento) + ') no coincide con el total (' + fmt(d.total) + '). ¿Guardar igual?')) return;
-    var id = this.F.id;
+    var id = this.F.id, ant = id ? docDe(id) : null;
+    if (ant && Calc.rets(ant).length && !fa) { toast('Tiene retenciones emitidas: anúlelas antes de cambiarlo a otro tipo'); return; }
+    /* con otra moneda, lo pagado se reexpresa con lo realmente pagado y la tasa de cada pago */
+    var cambiaMon = ant && (ant.pagos || []).length && ant.moneda !== d.moneda;
+    if (cambiaMon && !Rol.paga()) { toast('Tiene pagos registrados: solo quien registra pagos puede cambiarle la moneda'); return; }
+    var pagos = !ant ? [] : (ant.pagos || []).map(function (x) { return cambiaMon ? Object.assign({}, x, { montoDoc: r2(conv(x.monto, x.moneda, d.moneda, x.tasas || BCV.hoy)) }) : x; });
+    var yaPagado = r2(pagos.reduce(function (a, x) { return a + (+x.montoDoc || 0); }, 0));
+    if (yaPagado > d.total + 0.005 && !confirm('Lo ya pagado (' + mon(yaPagado, d.moneda) + ') supera el total del documento (' + mon(d.total, d.moneda) + '). ¿Guardar igual?')) return;
+    if (ant) d.pagos = pagos;
     var dup = DB.documentos.find(function (x) { return x.id !== id && x.provId === d.provId && x.tipo === d.tipo && clave(x.numero) === clave(d.numero) && !x.anulado; });
     if (dup) { toast('Ya existe ' + TIPOS[d.tipo].toLowerCase() + ' ' + d.numero + ' de este proveedor'); return; }
     if (id) Object.assign(docDe(id), d, { mod: new Date().toISOString(), modPor: yo() });
@@ -1582,6 +1617,7 @@ var Docs = {
       '<table class="itemtbl"><tbody>' + (d.tipo === 'factura' ? '<tr><td>N° control</td><td class="num mono">' + esc(d.control) + '</td></tr><tr><td>Base imponible</td><td class="num">' + mon(d.base, d.moneda) + '</td></tr><tr><td>IVA ' + d.alic + '%</td><td class="num">' + mon(d.iva, d.moneda) + '</td></tr>' + (d.exento ? '<tr><td>Exento</td><td class="num">' + mon(d.exento, d.moneda) + '</td></tr>' : '') : '') +
       '<tr><td><b>Total</b></td><td class="num"><b>' + mon(d.total, d.moneda) + '</b></td></tr><tr><td>Retenciones</td><td class="num">−' + mon(Calc.retDoc(d), d.moneda) + '</td></tr><tr><td><b>Neto a pagar</b></td><td class="num"><b>' + mon(Calc.neto(d), d.moneda) + '</b></td></tr>' +
       '<tr><td>Pagado</td><td class="num">' + mon(Calc.pagado(d), d.moneda) + '</td></tr><tr><td><b>Saldo</b></td><td class="num"><b>' + mon(Math.max(0, Calc.saldo(d)), d.moneda) + '</b></td></tr></tbody></table>' +
+      (Calc.saldo(d) < -0.005 ? '<div class="hint cx-rojo"><b>Pagado de más: ' + mon(-Calc.saldo(d), d.moneda) + '.</b> Se pagó antes de la retención: el proveedor debe devolverlo o compensarlo.</div>' : '') +
       (d.ivaNoAplica || d.islrNoAplica ? '<div class="hint">' + (d.ivaNoAplica ? 'IVA: no aplica (' + esc(d.ivaNoAplica) + '). ' : '') + (d.islrNoAplica ? 'ISLR: no aplica (' + esc(d.islrNoAplica) + ').' : '') + '</div>' : '') +
       (rr ? '<h4 class="cx-h4">Retenciones</h4><table class="itemtbl"><thead><tr><th>Tipo</th><th>N°</th><th class="center">Fecha</th><th class="num">Monto</th><th>Estado</th><th></th></tr></thead><tbody>' + rr + '</tbody></table>' : '') +
       (pp ? '<h4 class="cx-h4">Pagos</h4><table class="itemtbl"><thead><tr><th class="center">Fecha</th><th>Forma</th><th class="num">Monto</th><th class="num">Equiv. ' + d.moneda + '</th><th>Referencia</th><th>Comprobante</th></tr></thead><tbody>' + pp + '</tbody></table>' : '') +
@@ -1616,7 +1652,8 @@ var Ret = {
     var cOpt = CONCEPTOS_ISLR.map(function (c) { return '<option' + (c.k === conc ? ' selected' : '') + '>' + c.k + '</option>'; }).join('');
     var faltaIva = p.pctIva == null || p.pctIva === '';
     UI.modal('Retenciones · Factura ' + d.numero + ' · ' + p.razon,
-      '<div class="info-pedido cx-chips"><span>Base <b>Bs ' + fmt(baseBs) + '</b></span><span>IVA ' + fmt(d.alic, 0) + '% <b>Bs ' + fmt(d.iva * t) + '</b></span><span>Total <b>Bs ' + fmt(d.total * t) + '</b></span>' + (d.moneda !== 'Bs' ? '<span>' + d.moneda + ' a <b>' + fmt(t, 4) + '</b></span>' : '') + '</div>' +
+      '<div class="info-pedido cx-chips"><span>Base <b>Bs ' + fmt(baseBs) + '</b></span><span>IVA ' + fmt(d.alic, 0) + '% <b>Bs ' + fmt(d.iva * t) + '</b></span><span>Total <b>Bs ' + fmt(d.total * t) + '</b></span>' + (d.moneda !== 'Bs' ? '<span>' + d.moneda + ' a <b>' + fmt(t, 4) + '</b></span>' : '') + (Calc.pagado(d) > 0 ? '<span>Ya pagado <b>' + mon(Calc.pagado(d), d.moneda) + '</b></span>' : '') + '</div>' +
+      (Calc.pagado(d) > 0 ? '<div class="hint">Esta factura ya tiene pagos. La retención baja el neto a pagar: si queda por debajo de lo pagado, el documento mostrará el pago de más.</div>' : '') +
       '<div class="cxf">' + Fm.c(3, 'Fecha de la retención *', '<input id="rtFecha" type="date" value="' + hoy() + '" oninput="Ret.calc()">', '', '', 'rtPer') + '</div>' +
       /* IVA */
       '<div class="cx-box"><div class="cx-boxh"><b>Retención de IVA</b>' + (hecho.iva ? ' · ya emitido N° ' + hecho.iva.num : '') + '</div>' + (hecho.iva ? '' :
@@ -1723,7 +1760,7 @@ var Ret = {
   anular: function (id) {
     if (!Rol.esAdmin()) { toast('Solo el administrador puede anular'); return; }
     var r = retDe(id), d = docDe(r.docId);
-    if (d && Calc.pagado(d) > 0) { toast('La factura ya tiene pagos: no se puede anular la retención'); return; }
+    if (d && Calc.pagado(d) > 0 && !confirm('La factura ya tiene pagos por ' + mon(Calc.pagado(d), d.moneda) + '. Al anular, su saldo por pagar sube hasta que emita la nueva retención.\n\n¿Continuar?')) return;
     var mot = prompt('Anular el comprobante ' + (r.tipo === 'iva' ? 'IVA' : 'ISLR') + ' N° ' + r.num + '.\nEl número queda usado (no se reutiliza).\n\nMotivo:'); if (!mot) return;
     r.estado = 'anulado'; r.motivoAnul = mot; r.anuladoEn = new Date().toISOString(); Store.save(); UI.render(); toast('Comprobante ' + r.num + ' anulado');
   },
@@ -1777,7 +1814,7 @@ var Pag = {
       '<div class="cxf">' + Fm.sec('Pago') +
       Fm.c(3, 'Fecha del pago *', '<input id="pgFecha" type="date" value="' + hoy() + '" onchange="Pag.onFecha()">') +
       Fm.c(3, 'Moneda del pago', Fm.sel('pgMon', MONEDAS, monPago, 'onchange="Pag.P.montoMano=false;Pag.calc()"')) +
-      Fm.c(3, 'Monto pagado *', Fm.n('pgMonto', '', 2, 'class="n cx-fuerte" oninput="Pag.P.montoMano=true;Pag.calc()"'), '', '', 'pgInfo') +
+      Fm.c(3, 'Monto a pagar o abonar *', Fm.n('pgMonto', '', 2, 'class="n cx-fuerte" oninput="Pag.P.montoMano=true;Pag.calc()"'), '', '', 'pgInfo') +
       Fm.c(3, 'Forma de pago', Fm.sel('pgForma', FORMAS, 'Transferencia Bs')) +
       Fm.c(3, 'Tasa BCV USD', Fm.n('pgTUSD', BCV.hoy.USD || '', 4, 'oninput="Pag.calc()"'), '', '', 'pgTUSDi') +
       Fm.c(3, 'Tasa BCV EUR', Fm.n('pgTEUR', BCV.hoy.EUR || '', 4, 'oninput="Pag.calc()"'), '', '', 'pgTEURi') +
@@ -1872,7 +1909,7 @@ var Pag = {
     var fe = $('pgFecha').value, forma = $('pgForma').value, ref = $('pgRef').value.trim(), C = this.P.comps;
     var reg = function (comps) {
       (d.pagos = d.pagos || []).push({ id: uid('pg'), fecha: fe, moneda: m, monto: x, tasas: ts, montoDoc: eq, forma: forma, ref: ref, comps: comps, creado: new Date().toISOString(), por: yo() });
-      Store.save(); UI.cerrarModal(); UI.render(); toast('Pago registrado · ' + Calc.estado(d));
+      Store.save(); UI.cerrarModal(); UI.render(); toast((Calc.saldo(d) > 0.005 ? 'Abono registrado · saldo ' + mon(Calc.saldo(d), d.moneda) : 'Pago registrado · ' + Calc.estado(d)));
     };
     if (!Store.cloud() || !C.length) { reg(C.map(function (c) { return { nombre: c.nombre, tam: c.tam, local: true }; })); return; }
     var bt = document.querySelector('#modalBody .cxacc .btn.g'); bt.disabled = true; bt.textContent = 'Subiendo comprobante…';
@@ -2478,7 +2515,7 @@ var Caja = {
       Fm.c(3, 'Tasa BCV (Bs por <span id="dcMonL">' + d.moneda + '</span>)', Fm.n('dcTasa', d.moneda === 'Bs' ? '' : d.tasa, 4, 'oninput="Caja.calc()"'), '', 'cx-tasa', 'dcTasaInfo') +
       '<div class="cxsec" id="dcSecMon">Montos</div>' +
       Fm.c(3, 'Base imponible *', Fm.n('dcBase', d.base, 2, 'oninput="Caja.calc()"'), '', 'cx-fact') +
-      Fm.c(2, 'Alícuota IVA', Fm.sel('dcAlic', [['16', '16%'], ['8', '8%'], ['0', '0%']], String(+d.alic), 'onchange="Caja.calc()"'), '', 'cx-fact') +
+      Fm.c(2, 'Alícuota IVA', Fm.sel('dcAlic', [['16', '16%'], ['8', '8%'], ['0', '0%']], String(d.tipo === 'factura' ? +d.alic : DB.config.alicuota), 'onchange="Caja.calc()"'), '', 'cx-fact') +
       Fm.c(2, 'IVA', Fm.n('dcIva', d.iva, 2, 'oninput="Caja.G.ivaMano=true;Caja.calc(true)"'), 'Calculado; editable', 'cx-fact') +
       Fm.c(2, 'Exento', Fm.n('dcExe', +d.exento || '', 2, 'oninput="Caja.calc()"'), '', 'cx-fact') +
       Fm.c(3, 'Total pagado *', Fm.n('dcTotal', d.total, 2, 'class="n cx-fuerte" oninput="Caja.calc()"')) +

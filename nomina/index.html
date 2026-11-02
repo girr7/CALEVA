@@ -1607,7 +1607,10 @@ function calcPeriodo(pid){
     const bp_costoDia = bp_acordUSD>0? bp_acordUSD/base : 0;
     const bp_extraUSD = (+L.diasExtra||0)*bp_costoDia;
     const bp_descUSD  = faltas*bp_costoDia;
-    const bp_vac=+L.vacaciones||0, bp_uti=+L.utilidades||0;
+    /* el pago registrado en el módulo Vacaciones se paga con los bonos: entra al total de Pago Móvil, al TXT y al detalle */
+    const vac_pagoUSD = (!esC && typeof vacPagoEnPeriodo==='function') ? vacPagoEnPeriodo(t,p) : 0;
+    const vac_pagoBs  = vac_pagoUSD*tasa;
+    const bp_vac=(+L.vacaciones||0)+vac_pagoUSD, bp_uti=+L.utilidades||0;
     const bp_prod = esC? 0 : (+L.bonoProduccion||0);     /* pago único, no depende de días */
     const bp_presMan = +L.prestamos||0;
     const bp_presAuto = esC? 0 : pr_auto;
@@ -1630,8 +1633,6 @@ function calcPeriodo(pid){
     const ct_netoUSD = esC? (ct_subUSD + ct_ivaUSD - ct_retIVA - ct_retISLR - ct_presta) : 0;
     const ct_netoBs  = ct_netoUSD*tasa;
 
-    const vac_pagoUSD = (typeof vacPagoEnPeriodo==='function') ? vacPagoEnPeriodo(t,p) : 0;
-    const vac_pagoBs  = vac_pagoUSD*tasa;
     const vacDias = (typeof vacDiasEnPeriodo==='function') ? vacDiasEnPeriodo(t,p) : 0;
     return {t,L,faltas,faltasT,base,esL,esC,suspendido,noAplicaTransporte,sinTransporte,modo,cuotas,pr_auto,prestamoActivo,prestamoRegistrado,prestamoOverride,vac_pagoUSD,vac_pagoBs,vacDias,
       nb_ticketBs,nb_descBs,nb_netoBs,nb_sueldoBs,nb_totalBs,
@@ -1640,8 +1641,8 @@ function calcPeriodo(pid){
       bp_presMan,bp_presAuto,bp_pres,bp_ajuste,bp_totalUSD,bp_totalBs,
       ct_contratoUSD,ct_aplica,ct_baseUSD,ct_prodUSD,ct_subUSD,ct_ivaUSD,ct_retIVA,ct_retISLR,ct_presta,ct_netoUSD,ct_netoBs,
       /* Total devengado por el trabajador en el período */
-      totalUSD: nb_totalBs/tasa + bp_totalUSD + bt_netoUSD + ct_netoUSD + vac_pagoUSD,
-      totalBs:  nb_totalBs + bp_totalBs + bt_netoBs + ct_netoBs + vac_pagoBs,
+      totalUSD: nb_totalBs/tasa + bp_totalUSD + bt_netoUSD + ct_netoUSD,
+      totalBs:  nb_totalBs + bp_totalBs + bt_netoBs + ct_netoBs,
       pmOk: !!(t.telefonoPM && t.cedula && t.bancoPM && t.bancoPM!=='---')};
   });
 
@@ -1671,8 +1672,8 @@ function calcPeriodo(pid){
   const granUSD=grupos.reduce((a,g)=>a+g.totUSD,0), granBs=grupos.reduce((a,g)=>a+g.totBs,0);
 
   const R={p,c,tasa,ticketAlimBs,diarioTicketBs,convDepUSD,filas,tot,grupos,granUSD,granBs,
-    granTotalUSD: tot.nb_totalBs/tasa+granUSD+tot.bt_netoUSD+tot.ct_netoUSD+tot.vac_pagoUSD,
-    granTotalBs: tot.nb_totalBs+granBs+tot.bt_netoBs+tot.ct_netoBs+tot.vac_pagoBs};
+    granTotalUSD: tot.nb_totalBs/tasa+granUSD+tot.bt_netoUSD+tot.ct_netoUSD,
+    granTotalBs: tot.nb_totalBs+granBs+tot.bt_netoBs+tot.ct_netoBs};
   PER=prev; return R;
 }
 /** Recalcula el período actual con una tasa hipotética */
@@ -1933,9 +1934,8 @@ function vDash(){
       <section class="section-card"><div class="section-head"><div class="section-head-icon">≡</div><div class="section-title"><h3>Composición del costo</h3><p>Distribución consolidada del período en USD y bolívares</p></div><span class="tag">${esc(p.etiqueta)}</span></div>
         <div class="summary-list">
           <div class="summary-row"><span class="name">Nómina básica · depósito en cuenta</span><span class="usd">${fUsd(R.tot.nb_totalBs/R.tasa)}</span><span class="bs">${fBs(R.tot.nb_totalBs)} Bs.</span></div>
-          <div class="summary-row"><span class="name">Bonos personal + comisión Pago Móvil</span><span class="usd">${fUsd(R.granUSD)}</span><span class="bs">${fBs(R.granBs)} Bs.</span></div>
+          <div class="summary-row"><span class="name">Bonos personal + comisión Pago Móvil${R.tot.vac_pagoUSD>0.004?` (incluye vacaciones ${fUsd(R.tot.vac_pagoUSD)})`:''}</span><span class="usd">${fUsd(R.granUSD)}</span><span class="bs">${fBs(R.granBs)} Bs.</span></div>
           <div class="summary-row"><span class="name">Bono transporte · TodoTicket</span><span class="usd">${fUsd(R.tot.bt_netoUSD)}</span><span class="bs">${fBs(R.tot.bt_netoBs)} Bs.</span></div>
-          ${R.tot.vac_pagoUSD>0.004?`<div class="summary-row"><span class="name">Vacaciones pagadas (LOTTT)</span><span class="usd">${fUsd(R.tot.vac_pagoUSD)}</span><span class="bs">${fBs(R.tot.vac_pagoBs)} Bs.</span></div>`:''}
           <div class="summary-row total"><span class="name">Gran total del período</span><span class="usd">${fUsd(R.granTotalUSD)}</span><span class="bs">${fBs(R.granTotalBs)} Bs.</span></div>
         </div></section>
       <section class="section-card"><div class="section-head"><div class="section-head-icon">⌁</div><div class="section-title"><h3>Pagos por coordinador</h3><p>Control de dispersión de bonos por Pago Móvil</p></div><span class="tag">${R.grupos.length} grupos</span></div>
@@ -2016,7 +2016,7 @@ function vQuincena(){
         :(m==='custom'?'':'')}
       <td class="num gl"><input type="number" class="xs" min="0" value="${f.L.diasExtra||0}" ${ro} onchange="setL('${f.t.id}','diasExtra',this.value)"></td>
       <td class="num"><input type="number" min="0" step="0.01" value="${f.L.bonoProduccion||0}" ${ro} onchange="setL('${f.t.id}','bonoProduccion',this.value)" title="Bono de producción — pago único, no depende de días trabajados"></td>
-      ${qDet?`<td class="num"><input type="number" min="0" step="0.01" value="${f.L.vacaciones||0}" ${ro} onchange="setL('${f.t.id}','vacaciones',this.value)"></td>
+      ${qDet?`<td class="num"><input type="number" min="0" step="0.01" value="${f.L.vacaciones||0}" ${ro} onchange="setL('${f.t.id}','vacaciones',this.value)">${f.vac_pagoUSD>0.004?`<span class="sub2" title="Registrado en el módulo Vacaciones; ya está incluido en el total">+ ${fN(f.vac_pagoUSD)} módulo</span>`:''}</td>
        <td class="num"><input type="number" min="0" step="0.01" value="${f.L.utilidades||0}" ${ro} onchange="setL('${f.t.id}','utilidades',this.value)"></td>`:''}
       <td class="num gl">${f.prestamoActivo
         ? (f.prestamoRegistrado
