@@ -3088,7 +3088,7 @@ function vPrestamos(){
         <td style="font-size:11.5px">${fFecha(x.fecha)}</td><td class="txm">${esc(x.descripcion)||'—'}</td>
         <td><span class="pill grey">${x.modalidad==='mensual'?'Mensual · Q'+(x.quincenaCobro||2):'Quincenal'}</span></td>
         <td class="num">${fUsd(x.montoTotal)}</td><td class="num">${fUsd(x.montoCuota)}</td>
-        <td class="num">${np} / ${x.cuotas}</td>
+        <td class="num" title="Cuotas cobradas / total (cobradas + las que faltan según el saldo)">${np} / ${np+(sd>0.004&&+x.montoCuota>0?Math.ceil(sd/(+x.montoCuota)-1e-9):0)}</td>
         <td class="num" style="color:var(--ok)">${fUsd(ab)}</td>
         <td class="num tt">${fUsd(sd)}</td>
         <td><div style="width:82px;height:7px;background:var(--line);border-radius:4px;overflow:hidden">
@@ -3171,21 +3171,21 @@ function borrarPrestamo(id){
 }
 function verPrestamo(id){
   const x=DB.prestamos.find(y=>y.id===id), t=DB.trabajadores.find(y=>y.id===x.trabajadorId);
-  const pagados=Object.entries(x.pagos||{});
+  /* Antes el plan suponía que toda cuota cobrada fue de montoCuota: un abono parcial (override)
+     dejaba el «saldo después» y las cuotas pendientes distintos del saldo real. */
+  const fPer=p=>p?(p.fechaPagoReal||p.fechaPagoPrevista||''):'';
+  const pagados=Object.entries(x.pagos||{}).map(([pid,m])=>({per:DB.periodos.find(p=>p.id===pid),monto:+m||0}))
+    .sort((a,b)=>fPer(a.per).localeCompare(fPer(b.per)));
   let acum=0;
   const plan=[];
-  for(let i=1;i<=x.cuotas;i++){
-    const monto=Math.min(x.montoCuota, x.montoTotal-acum);
-    if(monto<=0.004) break;
-    acum+=monto;
-    const pg=pagados[i-1];
-    const per=pg? DB.periodos.find(p=>p.id===pg[0]) : null;
-    plan.push({i,monto,saldo:x.montoTotal-acum,pagada:!!pg,periodo:per?per.etiqueta:''});
-  }
+  pagados.forEach(pg=>{ acum+=pg.monto; plan.push({monto:pg.monto,saldo:Math.max(0,x.montoTotal-acum),pagada:true,periodo:pg.per?pg.per.etiqueta:'(período eliminado)'}); });
+  let rest=Math.max(0,(+x.montoTotal||0)-acum);
+  while(rest>0.004 && plan.length<240){ const m=Math.min(+x.montoCuota||rest, rest); rest-=m; plan.push({monto:m,saldo:rest,pagada:false,periodo:''}); }
+  plan.forEach((c,i)=>{ c.i=i+1; });
   modal('Plan de Pagos — '+esc(t?t.nombre:''),`
     <div class="grid g4" style="margin-bottom:16px">
       <div class="kpi acc"><div class="lbl">Monto</div><div class="val">${fUsd(x.montoTotal)}</div></div>
-      <div class="kpi ok"><div class="lbl">Abonado</div><div class="val">${fUsd(abonado(x))}</div><div class="sub">${pagados.length} cuota(s)</div></div>
+      <div class="kpi ok"><div class="lbl">Abonado</div><div class="val">${fUsd(abonado(x))}</div><div class="sub">${pagados.length} cuota(s) cobrada(s) · ${plan.length-pagados.length} pendiente(s)</div></div>
       <div class="kpi gold"><div class="lbl">Saldo</div><div class="val">${fUsd(saldo(x))}</div></div>
       <div class="kpi"><div class="lbl">Cuota</div><div class="val">${fUsd(x.montoCuota)}</div><div class="sub">${x.modalidad}</div></div>
     </div>
