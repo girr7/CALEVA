@@ -1016,7 +1016,8 @@ var CFG0 = {
   ut: 43, cajaUT: 20,   /* caja chica: sin retención de IVA hasta 20 U.T. (Prov. SNAT/2015/0049) */
                          /* unidad tributaria (Bs): sustraendo PN = UT × 83,3334 × % */
   corr: { iva: 1663, islr: 453 }, /* ÚLTIMO número emitido de cada tipo */
-  alicuota: 16, pctIvaDefecto: 75
+  alicuota: 16, pctIvaDefecto: 75,
+  ivaAgenteHasta: '2026-10-31'   /* último día como agente de retención de IVA (SENIAT: ordinario desde 01/11/2026); vacío = sigue siendo agente */
 };
 
 /* ---------- utilidades ---------- */
@@ -1224,17 +1225,19 @@ var Calc = {
     return r2(r2(d.base * tf) + r2(d.iva * tf) + r2((+d.exento || 0) * tf) - Calc.retBs(d)); },
   pagado: function (d) { return r2((d.pagos || []).reduce(function (a, p) { return a + (+p.montoDoc || 0); }, 0)); },
   saldo: function (d) { return r2(Calc.neto(d) - Calc.pagado(d)); },
+  agenteIva: function () { var h = DB.config.ivaAgenteHasta; return !h || hoy() <= h; },
+  /* sin ser agente no se emite IVA a ninguna factura pendiente, sea cual sea su fecha (confirmado por el contador) */
+  ivaNoAplica: function (d) { return d.ivaNoAplica || (d.tipo === 'factura' && !Calc.agenteIva() ? 'Caleva fue agente de IVA hasta el ' + fdmy(DB.config.ivaAgenteHasta) : ''); },
   /* factura: IVA y ISLR resueltos (emitidos o marcados «no aplica») */
   retenida: function (d) {
     if (d.tipo !== 'factura') return true;
-    return (!!Calc.ret(d, 'iva') || !!d.ivaNoAplica) && (!!Calc.ret(d, 'islr') || !!d.islrNoAplica);
+    return (!!Calc.ret(d, 'iva') || !!Calc.ivaNoAplica(d)) && (!!Calc.ret(d, 'islr') || !!d.islrNoAplica);
   },
   estado: function (d) {
     if (d.anulado) return 'Anulado';
     if (typeof Caja !== 'undefined' && Caja.esGasto(d)) return Caja.estadoGasto(d);
-    if (!Calc.retenida(d)) return 'Por retener';   /* antes que «Pagado»: una nota pagada que pasa a factura aún debe retenerse */
+    /* solo Pendiente o Pagado: un abono sigue pendiente por su saldo; la retención por emitir se ve con su acción «Retener» */
     if (Calc.saldo(d) <= 0.005 && Calc.pagado(d) > 0) return 'Pagado';
-    if (Calc.pagado(d) > 0) return 'Parcial';
     return 'Pendiente';
   },
   vencido: function (d) { if (typeof Caja !== 'undefined' && Caja.esGasto(d)) return false; var e = Calc.estado(d); return e !== 'Pagado' && e !== 'Anulado' && d.vence && dias(d.vence) < 0; }
@@ -1332,7 +1335,7 @@ var Prov = {
     return n;
   },
   faltan: function (p) {
-    var f = []; if (!p.direccion) f.push('dirección'); if (p.pctIva == null || p.pctIva === '') f.push('% IVA');
+    var f = []; if (!p.direccion) f.push('dirección'); if (Calc.agenteIva() && (p.pctIva == null || p.pctIva === '')) f.push('% IVA');
     if (!RIF.valido(p.rif)) f.push('RIF'); return f;
   },
   render: function () {
@@ -1385,7 +1388,7 @@ var Prov = {
       Fm.c(4, 'Ciudad / Estado', Fm.t('pvCiu', p.ciudad, 'placeholder="EDO. CARABOBO"'), 'Tercera línea en el comprobante de IVA') +
       Fm.c(4, 'Teléfono', Fm.t('pvTel', p.tel, 'placeholder="0424-0000000"')) + Fm.c(4, 'Correo', Fm.t('pvMail', p.email)) + Fm.c(4, 'Contacto', Fm.t('pvCont', p.contacto)) +
       Fm.sec('Retenciones') +
-      Fm.c(3, '% retención IVA *', Fm.sel('pvIva', [['', '— falta dato —'], ['75', '75%'], ['100', '100%']], vacioIva ? '' : String(+p.pctIva))) +
+      Fm.c(3, Calc.agenteIva() ? '% retención IVA *' : '% retención IVA', Fm.sel('pvIva', [['', Calc.agenteIva() ? '— falta dato —' : '—'], ['75', '75%'], ['100', '100%']], vacioIva ? '' : String(+p.pctIva))) +
       Fm.c(3, '% retención ISLR', Fm.n('pvIslr', +p.pctIslr || '', 2, 'placeholder="0,00"')) +
       Fm.c(3, 'Concepto ISLR', Fm.sel('pvConc', [['', '—']].concat(CONCEPTOS_ISLR.map(function (c) { return [c.k, c.k]; })), p.conceptoIslr || '')) +
       Fm.c(3, 'Sustraendo (Bs)', Fm.n('pvSus', p.sustraendo == null ? '' : p.sustraendo, 2, 'placeholder="automático"'), 'Vacío = automático (persona natural)') +
@@ -1466,7 +1469,7 @@ var Docs = {
     }
     var body = L.map(function (d) {
       var p = provDe(d.provId) || {}, e = Calc.estado(d), ven = Calc.vencido(d), dv = dias(d.vence);
-      var cls = { Pendiente: 'b1', 'Por retener': 'b4', Parcial: 'b2', Pagado: 'b3', Anulado: 'b5' }[e];
+      var cls = { Pendiente: 'b1', Pagado: 'b3', Anulado: 'b5' }[e];
       var acc = '<span class="cx-lnk" title="Ver detalle" onclick="Docs.ver(\'' + d.id + '\')">👁</span>';
       if (e !== 'Anulado' && e !== 'Pagado') {
         if (d.tipo === 'factura' && !Calc.retenida(d) && Rol.ed('ret')) acc += ' <span class="cx-lnk cx-ret" title="Emitir retenciones" onclick="Ret.abrir(\'' + d.id + '\')">🧾 Retener</span>';
@@ -1485,7 +1488,7 @@ var Docs = {
       '<select style="max-width:210px" onchange="Docs.f.prov=this.value;Docs.render()">' + pOpt + '</select>' +
       '<select style="max-width:210px" onchange="Docs.f.ped=this.value;Docs.render()">' + Seg.optPedidos(f.ped, 'Todos los pedidos') + '</select>' +
       sel('', 'tipo', [['', 'Todos los tipos']].concat(Object.keys(TIPOS).map(function (k) { return [k, TIPOS[k]]; }))) +
-      sel('', 'est', [['abiertos', 'Abiertos'], ['vencidos', 'Vencidos'], ['Por retener', 'Por retener'], ['Pendiente', 'Pendientes'], ['Parcial', 'Pago parcial'], ['Pagado', 'Pagados'], ['Anulado', 'Anulados'], ['', 'Todos']]) +
+      sel('', 'est', [['abiertos', 'Pendientes'], ['vencidos', 'Vencidos'], ['Pagado', 'Pagados'], ['Anulado', 'Anulados'], ['', 'Todos']]) +
       sel('', 'mon', [['', 'Toda moneda'], ['Bs', 'Bs'], ['USD', 'USD'], ['EUR', 'EUR']]) +
       '<label class="cx-fecha">Desde <input type="date" value="' + f.desde + '" onchange="Docs.f.desde=this.value;Docs.render()"></label><label class="cx-fecha">Hasta <input type="date" value="' + f.hasta + '" onchange="Docs.f.hasta=this.value;Docs.render()"></label></div>' +
       '<div class="cx-tba"><button class="btn gr" onclick="Xls.documentos()">⬇ Excel</button>' + (Rol.ed('docs') ? '<button class="btn g" onclick="Docs.editar()">＋ Nuevo documento</button>' : '') + '</div></div>' +
@@ -1541,7 +1544,7 @@ var Docs = {
     $('dcEtInfo').textContent = p ? (n ? n + ' ET con valuaciones en este pedido' : 'Este pedido aún no tiene ET valuadas: elija del catálogo') : '';
   },
   onTipo: function () { var fa = $('dcTipo').value === 'factura'; [].forEach.call(document.querySelectorAll('#modalBody .cx-fact'), function (e) { e.style.display = fa ? '' : 'none'; }); $('dcSecMon').textContent = fa ? 'Montos de la factura' : 'Monto del documento';
-    $('dcTotInfo').textContent = fa && this.F.id && this.F.tipoIni !== 'factura' ? 'Pasa a factura: conserva sus pagos y queda por retener' : ''; this.calc(); },
+    $('dcTotInfo').textContent = fa && this.F.id && this.F.tipoIni !== 'factura' ? 'Pasa a factura: conserva sus pagos; revise su retención de ISLR' : ''; this.calc(); },
   onProv: function (ini) {
     var p = Prov.buscar($('dcProv').value), i = $('dcProvInfo');
     /* el «change» se repite al salir de la casilla (p. ej. al hacer clic en «Crear este proveedor»):
@@ -1549,7 +1552,7 @@ var Docs = {
     if (!ini && i.dataset.v === $('dcProv').value) return; i.dataset.v = $('dcProv').value;
     if (!p) { i.innerHTML = $('dcProv').value ? '<span class="cx-rojo">No está registrado.</span> <span class="cx-lnk" onclick="Docs.crearProv()">＋ Crear este proveedor ahora</span>' : ''; return; }
     var fal = Prov.faltan(p);
-    i.innerHTML = esc(p.rif) + ' · IVA ' + (p.pctIva == null ? '<b class="cx-nar">falta %</b>' : p.pctIva + '%') + (+p.pctIslr ? ' · ISLR ' + p.pctIslr + '%' : '') + (+p.plazo ? ' · plazo ' + p.plazo + ' días' : '') + (fal.length ? ' · <span class="cx-nar">falta ' + esc(fal.join(', ')) + '</span>' : '');
+    i.innerHTML = esc(p.rif) + (Calc.agenteIva() ? ' · IVA ' + (p.pctIva == null ? '<b class="cx-nar">falta %</b>' : p.pctIva + '%') : '') + (+p.pctIslr ? ' · ISLR ' + p.pctIslr + '%' : '') + (+p.plazo ? ' · plazo ' + p.plazo + ' días' : '') + (fal.length ? ' · <span class="cx-nar">falta ' + esc(fal.join(', ')) + '</span>' : '');
     if (!ini && !this.F.venceMano && +p.plazo) $('dcVence').value = sumaDias($('dcFecha').value || hoy(), p.plazo);
     $('dcVenceInfo').textContent = +p.plazo ? 'Fecha + ' + p.plazo + ' días de plazo' : 'El proveedor no tiene plazo';
   },
@@ -1618,7 +1621,7 @@ var Docs = {
       '<tr><td><b>Total</b></td><td class="num"><b>' + mon(d.total, d.moneda) + '</b></td></tr><tr><td>Retenciones</td><td class="num">−' + mon(Calc.retDoc(d), d.moneda) + '</td></tr><tr><td><b>Neto a pagar</b></td><td class="num"><b>' + mon(Calc.neto(d), d.moneda) + '</b></td></tr>' +
       '<tr><td>Pagado</td><td class="num">' + mon(Calc.pagado(d), d.moneda) + '</td></tr><tr><td><b>Saldo</b></td><td class="num"><b>' + mon(Math.max(0, Calc.saldo(d)), d.moneda) + '</b></td></tr></tbody></table>' +
       (Calc.saldo(d) < -0.005 ? '<div class="hint cx-rojo"><b>Pagado de más: ' + mon(-Calc.saldo(d), d.moneda) + '.</b> Se pagó antes de la retención: el proveedor debe devolverlo o compensarlo.</div>' : '') +
-      (d.ivaNoAplica || d.islrNoAplica ? '<div class="hint">' + (d.ivaNoAplica ? 'IVA: no aplica (' + esc(d.ivaNoAplica) + '). ' : '') + (d.islrNoAplica ? 'ISLR: no aplica (' + esc(d.islrNoAplica) + ').' : '') + '</div>' : '') +
+      (Calc.ivaNoAplica(d) || d.islrNoAplica ? '<div class="hint">' + (Calc.ivaNoAplica(d) ? 'IVA: no aplica (' + esc(Calc.ivaNoAplica(d)) + '). ' : '') + (d.islrNoAplica ? 'ISLR: no aplica (' + esc(d.islrNoAplica) + ').' : '') + '</div>' : '') +
       (rr ? '<h4 class="cx-h4">Retenciones</h4><table class="itemtbl"><thead><tr><th>Tipo</th><th>N°</th><th class="center">Fecha</th><th class="num">Monto</th><th>Estado</th><th></th></tr></thead><tbody>' + rr + '</tbody></table>' : '') +
       (pp ? '<h4 class="cx-h4">Pagos</h4><table class="itemtbl"><thead><tr><th class="center">Fecha</th><th>Forma</th><th class="num">Monto</th><th class="num">Equiv. ' + d.moneda + '</th><th>Referencia</th><th>Comprobante</th></tr></thead><tbody>' + pp + '</tbody></table>' : '') +
       ((d.pedido || d.et) ? '<div class="hint">Pedido <b>' + esc(Seg.etiqueta(d.pedido) || '—') + '</b> · ET <b>' + esc(d.et || '—') + '</b></div>' : '') + (d.obs ? '<div class="hint"><b>Obs.:</b> ' + esc(d.obs) + '</div>' : '') +
@@ -1643,7 +1646,7 @@ var Ret = {
     if (!p) return;
     var fal = []; if (!p.direccion) fal.push('la dirección fiscal'); if (!RIF.partes(p.rif)) fal.push('un RIF válido');
     if (fal.length) { toast('Complete en el proveedor ' + fal.join(' y ') + ' antes de retener'); Prov.editar(p.id); return; }
-    var hecho = { iva: Calc.ret(d, 'iva') || (d.ivaNoAplica ? { num: '— no aplica: ' + d.ivaNoAplica } : null), islr: Calc.ret(d, 'islr') || (d.islrNoAplica ? { num: '— no aplica: ' + d.islrNoAplica } : null) };
+    var hecho = { iva: Calc.ret(d, 'iva') || (Calc.ivaNoAplica(d) ? { num: '— no aplica: ' + Calc.ivaNoAplica(d) } : null), islr: Calc.ret(d, 'islr') || (d.islrNoAplica ? { num: '— no aplica: ' + d.islrNoAplica } : null) };
     var t = d.moneda === 'Bs' ? 1 : d.tasa, baseBs = r2(d.base * t);
     var pctIva = p.pctIva == null || p.pctIva === '' ? DB.config.pctIvaDefecto : +p.pctIva;
     var conc = p.conceptoIslr || 'SERVICIOS', pctIslr = +p.pctIslr || 0;
@@ -1656,7 +1659,7 @@ var Ret = {
       (Calc.pagado(d) > 0 ? '<div class="hint">Esta factura ya tiene pagos. La retención baja el neto a pagar: si queda por debajo de lo pagado, el documento mostrará el pago de más.</div>' : '') +
       '<div class="cxf">' + Fm.c(3, 'Fecha de la retención *', '<input id="rtFecha" type="date" value="' + hoy() + '" oninput="Ret.calc()">', '', '', 'rtPer') + '</div>' +
       /* IVA */
-      '<div class="cx-box"><div class="cx-boxh"><b>Retención de IVA</b>' + (hecho.iva ? ' · ya emitido N° ' + hecho.iva.num : '') + '</div>' + (hecho.iva ? '' :
+      '<div class="cx-box"><div class="cx-boxh"><b>Retención de IVA</b>' + (hecho.iva ? (Calc.ret(d, 'iva') ? ' · ya emitido N° ' : ' ') + hecho.iva.num : '') + '</div>' + (hecho.iva ? '' :
       '<div class="cx-radios"><label class="cx-chk"><input type="radio" name="rtIvaM" value="si" checked onchange="Ret.calc()"> Emitir comprobante</label><label class="cx-chk"><input type="radio" name="rtIvaM" value="no" onchange="Ret.calc()"> No aplica</label></div>' +
       '<div class="cxf">' +
       Fm.c(3, '% retención', Fm.sel('rtIvaPct', [['75', '75%'], ['100', '100%']], String(pctIva), 'onchange="Ret.calc()"'), faltaIva ? '<b class="cx-nar">Falta en el proveedor: se guardará</b>' : '', 'cx-ivaf') +
@@ -1784,8 +1787,8 @@ var Ret = {
     }).join('');
     var pOpt = '<option value="">Todos los proveedores</option>' + DB.proveedores.filter(function (p) { return DB.retenciones.some(function (r) { return r.provId === p.id; }); }).map(function (p) { return '<option value="' + p.id + '"' + (f.prov === p.id ? ' selected' : '') + '>' + esc(p.razon) + '</option>'; }).join('');
     var nx = this.proximo('iva', hoy()), ns = this.proximo('islr', hoy());
-    $('tab-ret').innerHTML = '<div class="kpis">' + kpi('blue', 'IVA retenido ' + mes, 'Bs ' + fmt(mI), 'por enterar al SENIAT') + kpi('purple', 'ISLR retenido ' + mes, 'Bs ' + fmt(mS), 'por enterar al SENIAT') +
-      kpi('navy', 'Próximo IVA', nx.num, 'correlativo') + kpi('green', 'Próximo ISLR', ns.num, 'correlativo') + '</div>' +
+    $('tab-ret').innerHTML = '<div class="kpis">' + (Calc.agenteIva() || mI ? kpi('blue', 'IVA retenido ' + mes, 'Bs ' + fmt(mI), 'por enterar al SENIAT') : '') + kpi('purple', 'ISLR retenido ' + mes, 'Bs ' + fmt(mS), 'por enterar al SENIAT') +
+      (Calc.agenteIva() ? kpi('navy', 'Próximo IVA', nx.num, 'correlativo') : kpi('navy', 'Retención IVA', 'No aplica', 'agente hasta el ' + fdmy(DB.config.ivaAgenteHasta))) + kpi('green', 'Próximo ISLR', ns.num, 'correlativo') + '</div>' +
       '<div class="card"><div class="section-hdr">Comprobantes de retención<span class="section-hdr-right">' + L.length + ' comprobante(s)</span></div><div class="section-body">' +
       '<div class="toolbar"><select onchange="Ret.f.tipo=this.value;Ret.render()"><option value="">IVA e ISLR</option><option value="iva"' + (f.tipo === 'iva' ? ' selected' : '') + '>IVA</option><option value="islr"' + (f.tipo === 'islr' ? ' selected' : '') + '>ISLR</option></select>' +
       '<select onchange="Ret.f.mes=this.value;Ret.render()"><option value="">Todos los meses</option>' + meses.map(function (m) { return '<option' + (f.mes === m ? ' selected' : '') + '>' + m + '</option>'; }).join('') + '</select>' +
@@ -1848,7 +1851,7 @@ var Pag = {
       h += fila('<b>Total factura</b>', d.total, r2(d.total * tf), '', 'cx-sep cx-b');
       h += tit('Retenciones');
       h += rI ? fila('− Retención IVA ' + fmt(pctI, 0) + '% del IVA · N° ' + rI.num, rIdoc, rI.monto, 'comprobante del ' + fdmy(rI.fecha))
-              : fila('− Retención IVA', 0, 0, d.ivaNoAplica ? 'no aplica: ' + esc(d.ivaNoAplica) : '');
+              : Calc.agenteIva() ? fila('− Retención IVA', 0, 0, Calc.ivaNoAplica(d) ? 'no aplica: ' + esc(Calc.ivaNoAplica(d)) : '') : '';
       h += rS ? fila('− Retención ISLR ' + (rS.pct % 1 ? fmt(rS.pct) : rS.pct) + '% · N° ' + rS.num, rSdoc, rS.monto, esc(rS.concepto || '') + ' · base Bs ' + fmt(rS.base) + (+rS.sustraendo ? ' − sustraendo Bs ' + fmt(rS.sustraendo) : ''))
               : fila('− Retención ISLR', 0, 0, d.islrNoAplica ? 'no aplica: ' + esc(d.islrNoAplica) : '');
       h += fila('<b>Total retenido</b>', r2(rIdoc + rSdoc), r2((rI ? rI.monto : 0) + (rS ? rS.monto : 0)), '', 'cx-sep cx-b');
@@ -1856,7 +1859,7 @@ var Pag = {
       var ivaRest = r2(neto - d.base - (+d.exento || 0) + rSdoc), ivaRestBs = r2(d.iva * tf - (rI ? rI.monto : 0));
       h += tit('Neto a pagar');
       h += fila('Base imponible', d.base, r2(d.base * tf));
-      h += fila('+ IVA no retenido' + (rI ? ' (' + fmt(100 - pctI, 0) + '%)' : ''), ivaRest, ivaRestBs, rI ? 'IVA ' + mon(d.iva, d.moneda) + ' − retenido ' + mon(rIdoc, d.moneda) : '');
+      h += fila(rI ? '+ IVA no retenido (' + fmt(100 - pctI, 0) + '%)' : '+ IVA', ivaRest, ivaRestBs, rI ? 'IVA ' + mon(d.iva, d.moneda) + ' − retenido ' + mon(rIdoc, d.moneda) : '');
       if (+d.exento) h += fila('+ Exento', d.exento, r2(d.exento * tf));
       if (rS) h += fila('− Retención ISLR', rSdoc, rS.monto);
       h += fila('<b>= Neto a pagar</b>', neto, Calc.netoBs(d), '', 'cx-sep cx-b');
@@ -1894,7 +1897,7 @@ var Pag = {
       : 'A pagar en Bs: <b>' + mon(s, d.moneda) + '</b> × tasa BCV ' + d.moneda + ' ' + fmt(ts[d.moneda], 4) + (ft ? ' (' + fdmy(ft) + ')' : '') + ' = <b class="cx-big">Bs ' + fmt(sBs) + '</b>' +
         (mismaTasa ? '<div class="cx-mut" style="font-size:11px;margin-top:3px">Misma tasa de la factura: sin diferencia cambiaria; coincide con el neto en Bs de los comprobantes.</div>'
           : '<div class="cx-mut" style="font-size:11px;margin-top:3px">Diferencia cambiaria vs. tasa de la factura: Bs ' + fmt(sBs - r2(Calc.netoBs(d) - Calc.pagado(d) * d.tasa)) + '</div>');
-    $('pgInfo').innerHTML = eq > s + 0.005 ? '<span class="cx-rojo">Supera el saldo en ' + mon(eq - s, d.moneda) + '</span>' : (s - eq > 0.005 ? 'Quedará un saldo de <b>' + mon(s - eq, d.moneda) + '</b> (pago parcial)' : 'Cancela el documento');
+    $('pgInfo').innerHTML = eq > s + 0.005 ? '<span class="cx-rojo">Supera el saldo en ' + mon(eq - s, d.moneda) + '</span>' : (s - eq > 0.005 ? 'Quedará un saldo de <b>' + mon(s - eq, d.moneda) + '</b> (abono)' : 'Cancela el documento');
   },
   comps: function (x) { return (x.comps || []).map(function (c) { return c.path ? '<span class="cx-lnk" onclick="Nube.verComp(\'' + jsq(c.path) + '\')">📎 ' + esc(c.nombre) + '</span>' : '📎 ' + esc(c.nombre); }).join('<br>'); },
   pick: function (inp) { [].forEach.call(inp.files || [], function (f) { if (/\.(pdf|jpe?g|png)$/i.test(f.name)) Pag.P.comps.push({ nombre: f.name, tam: f.size, local: true, file: f }); }); inp.value = ''; $('pgComps').innerHTML = this.P.comps.map(function (c) { return '📎 ' + esc(c.nombre); }).join('<br>') || 'Sin comprobante.'; },
@@ -1958,7 +1961,7 @@ var Resumen = {
     $('tab-resumen').innerHTML = '<div class="kpis">' +
       kpi('navy', 'Por pagar (equiv. US$)', '$' + fmt(sum(A)), A.length + ' documento(s) · ' + (Object.keys(porMon).map(function (m) { return mon(porMon[m], m); }).join(' · ') || '—')) +
       kpi('red', 'Vencido', '$' + fmt(sum(ven)), ven.length + ' documento(s)') + kpi('orange', 'Vence en 7 días', '$' + fmt(sum(pv)), pv.length + ' documento(s)') +
-      kpi('purple', 'Por retener', String(pr.length), 'facturas sin comprobante') + kpi('green', 'Pagado en ' + mes, '$' + fmt(pagMes), 'equiv. US$') +
+      kpi('purple', 'Retención por emitir', String(pr.length), 'facturas sin comprobante') + kpi('green', 'Pagado en ' + mes, '$' + fmt(pagMes), 'equiv. US$') +
       kpi('blue', 'Retenido ' + mes, 'Bs ' + fmt(rI + rS), 'IVA Bs ' + fmt(rI) + ' · ISLR Bs ' + fmt(rS)) + '</div>' +
       '<div class="card"><div class="section-hdr">Saldo por proveedor y antigüedad<span class="section-hdr-right">equivalente US$ a la tasa BCV de hoy (' + fmt(BCV.hoy.USD, 4) + ')</span></div><div class="section-body"><div style="overflow-x:auto"><table id="tRes"><thead><tr><th>Proveedor</th><th class="center" style="width:60px">Docs</th><th class="num">Por vencer</th><th class="num">1–30 d</th><th class="num">31–60 d</th><th class="num">61–90 d</th><th class="num">+90 d</th><th class="num">Total</th></tr></thead><tbody>' +
       (filas || '<tr><td colspan="8" class="empty">Sin cuentas por pagar abiertas</td></tr>') + (filas ? '<tr class="tfoot-row"><td colspan="2" style="text-align:right;font-weight:700">TOTAL</td>' + tb.map(function (v) { return '<td class="num"><b>' + fmt(v) + '</b></td>'; }).join('') + '<td class="num"><b>' + fmt(sum(A)) + '</b></td></tr>' : '') +
@@ -1980,6 +1983,7 @@ var Conf = {
       Fm.sec('Correlativos y valores por defecto') +
       Fm.c(3, 'Último IVA emitido (secuencia)', Fm.t('cfCI2', c.corr.iva, 'class="cx-num" inputmode="numeric" ' + ad), 'Próximo: <b>' + Ret.proximo('iva', hoy()).num + '</b>') +
       Fm.c(3, 'Último ISLR emitido', Fm.t('cfCS2', c.corr.islr, 'class="cx-num" inputmode="numeric" ' + ad), 'Próximo: <b>' + Ret.proximo('islr', hoy()).num + '</b>') +
+      Fm.c(3, 'Último día como agente de IVA', '<input id="cfIvaH" type="date" value="' + esc(c.ivaAgenteHasta || '') + '" ' + ad + '>', 'Pasada esta fecha, ninguna factura pendiente lleva IVA. Vacío = sigue siendo agente') +
       Fm.c(3, 'Caja chica sin retención IVA hasta (U.T.)', Fm.n('cfCUT', c.cajaUT, 0, ad), 'Hoy: Bs ' + fmt((+c.ut || 0) * (+c.cajaUT || 0)) + ' · Prov. SNAT/2015/0049') +
       Fm.c(3, '% IVA por defecto', Fm.sel('cfPI', [['75', '75%'], ['100', '100%']], String(c.pctIvaDefecto), ad)) +
       Fm.c(3, 'Firma y sello', '<div class="cx-firmabox"><img src="' + Imp.firma() + '" alt="Firma y sello"></div>') +
@@ -1994,7 +1998,7 @@ var Conf = {
     var c = DB.config, a = c.agente;
     a.nombre = $('cfNom').value.trim(); a.rif = $('cfRif').value.trim(); a.rifFmt = $('cfRifF').value.trim(); a.tel = $('cfTel').value.trim(); a.ciudadIva = $('cfCI').value.trim(); a.ciudadIslr = $('cfCS').value.trim();
     a.dirIva = [$('cfDI0').value, $('cfDI1').value, $('cfDI2').value]; a.dirIslr = [$('cfDS0').value, $('cfDS1').value];
-    c.ut = r2(Num.get('cfUT')); c.cajaUT = Math.round(Num.get('cfCUT')); c.pctIvaDefecto = +$('cfPI').value;
+    c.ut = r2(Num.get('cfUT')); c.cajaUT = Math.round(Num.get('cfCUT')); c.pctIvaDefecto = +$('cfPI').value; c.ivaAgenteHasta = $('cfIvaH').value;
     var ci = parseInt(String($('cfCI2').value).replace(/\D/g, ''), 10), cs = parseInt(String($('cfCS2').value).replace(/\D/g, ''), 10);
     if (isNaN(ci) || isNaN(cs)) { toast('Correlativo inválido'); return; }
     var maxI = Math.max.apply(null, [0].concat(DB.retenciones.filter(function (r) { return r.tipo === 'iva'; }).map(function (r) { return r.seq; })));
@@ -2168,8 +2172,8 @@ var UI = {
   },
   render: function () {
     var m = { resumen: Resumen, docs: Docs, caja: Caja, prov: Prov, ret: Ret, pag: Pag, conf: Conf, aud: Aud }[this.cur]; if (m) m.render();
-    var nV = DB.documentos.filter(Calc.vencido).length, nR = DB.documentos.filter(function (d) { var e = Calc.estado(d); return e === 'Por retener'; }).length;
-    var b = $('hdrBadges'); if (b) b.innerHTML = '<div class="header-badge"><div class="val">' + nR + '</div><div class="lbl">Por retener</div></div><div class="header-badge' + (nV ? ' red' : '') + '"><div class="val">' + nV + '</div><div class="lbl">Vencidos</div></div>';
+    var nV = DB.documentos.filter(Calc.vencido).length, nR = DB.documentos.filter(function (d) { return !d.anulado && !Calc.retenida(d); }).length;
+    var b = $('hdrBadges'); if (b) b.innerHTML = '<div class="header-badge"><div class="val">' + nR + '</div><div class="lbl">Retención por emitir</div></div><div class="header-badge' + (nV ? ' red' : '') + '"><div class="val">' + nV + '</div><div class="lbl">Vencidos</div></div>';
   },
   aplicarRol: function () {
     [].forEach.call(document.querySelectorAll('.tab[data-tab]'), function (t) { var m = t.getAttribute('data-tab'); t.style.display = m === 'conf' || Rol.ve(m) ? '' : 'none'; });
@@ -2409,7 +2413,7 @@ var Caja = {
     var rb = R.map(function (r) {
       var e = Calc.estado(r);
       return '<tr' + (r.anulado ? ' class="cx-anul"' : '') + '><td class="mono">' + esc(r.numero) + '</td><td class="center">' + fdmy(r.fecha) + '</td><td class="center">' + (r.gastos || []).length + '</td><td class="num"><b>' + mon(r.total, r.moneda) + '</b></td><td class="num">' + mon(Calc.pagado(r), r.moneda) + '</td>' +
-        '<td class="center"><span class="badge2 ' + ({ Pagado: 'b3', Anulado: 'b5', Parcial: 'b2' }[e] || 'b1') + '">' + (e === 'Pendiente' ? 'Por pagar' : e) + '</span></td><td class="center" style="white-space:nowrap"><span class="cx-lnk" onclick="Caja.rendicion(\'' + r.id + '\')">📋 Rendición</span>' +
+        '<td class="center"><span class="badge2 ' + ({ Pagado: 'b3', Anulado: 'b5' }[e] || 'b1') + '">' + (e === 'Pendiente' ? 'Por pagar' : e) + '</span></td><td class="center" style="white-space:nowrap"><span class="cx-lnk" onclick="Caja.rendicion(\'' + r.id + '\')">📋 Rendición</span>' +
         (e !== 'Pagado' && e !== 'Anulado' && Rol.paga() ? ' <span class="cx-lnk cx-pag" onclick="Pag.abrir(\'' + r.id + '\')">💵 Pagar</span>' : '') + '</td></tr>';
     }).join('');
     return '<div class="card"><div class="section-hdr">Movimientos · ' + esc(c.nombre) + '<span class="section-hdr-right">' + G.length + ' gasto(s) · consumo ' + mon(tot, Caja.monOp(c)) + '</span></div><div class="section-body">' +
@@ -2572,7 +2576,7 @@ var Caja = {
     if (tot) msg.push('Sale de la caja: <b>' + mon(cs, mo) + '</b>' + (com ? ' (gasto ' + mon(r2(conv(tot, m, mo, ts)), mo) + ' + comisión Bs ' + fmt(com) + ')' : '') + (Caja.conRef(c) ? ' ≈ ' + mon(csLim, c.moneda) : '') + (fa ? ' · antes de retenciones' : '') + ' · disponible después: <b class="' + (disp - cs < -0.005 ? 'cx-rojo' : '') + '">' + mon(disp - cs, mo) + '</b>');
     if (tot && c.limite && csLim > c.limite + 0.005) msg.push('<span class="cx-rojo">⚠ Supera el límite por gasto (' + mon(c.limite, c.moneda) + ')</span>');
     if (tot && disp - cs < -0.005) msg.push('<span class="cx-rojo">⚠ No hay fondo suficiente: solicite la reposición</span>');
-    if (fa && tot) msg.push(totBs > umbralBs ? 'Factura de <b>Bs ' + fmt(totBs) + '</b> &gt; ' + (+DB.config.cajaUT || 20) + ' U.T. (Bs ' + fmt(umbralBs) + '): <b>lleva retención</b>; se emite al guardar.' : 'Factura ≤ ' + (+DB.config.cajaUT || 20) + ' U.T. (Bs ' + fmt(umbralBs) + '): sin retención de IVA por caja chica (Prov. SNAT/2015/0049).');
+    if (fa && tot) msg.push(!Calc.agenteIva() ? 'Factura sin retención de IVA: Caleva fue agente hasta el ' + fdmy(DB.config.ivaAgenteHasta) + '. Si el proveedor tiene ISLR, se emite al guardar.' : totBs > umbralBs ? 'Factura de <b>Bs ' + fmt(totBs) + '</b> &gt; ' + (+DB.config.cajaUT || 20) + ' U.T. (Bs ' + fmt(umbralBs) + '): <b>lleva retención</b>; se emite al guardar.' : 'Factura ≤ ' + (+DB.config.cajaUT || 20) + ' U.T. (Bs ' + fmt(umbralBs) + '): sin retención de IVA por caja chica (Prov. SNAT/2015/0049).');
     $('ccImp').innerHTML = msg.join('<br>');
     $('ccImp').style.display = msg.length ? '' : 'none';
   },
@@ -2599,13 +2603,14 @@ var Caja = {
     if (Caja.G.id) disp = r2(disp + Caja.consumo(docDe(Caja.G.id), c));
     if (cs > disp + 0.005 && !Caja.G.pre) { toast('No hay fondo suficiente (' + mon(disp, mo) + ' disponible): solicite la reposición'); return; }
     if (c.limite && csLim > c.limite + 0.005 && !confirm('Este gasto (' + mon(csLim, c.moneda) + ') supera el límite por gasto de la caja (' + mon(c.limite, c.moneda) + ').\n¿Registrarlo igual?')) return;
-    /* retención: factura > umbral de caja chica → queda «Por retener»; si no, IVA no aplica por norma */
+    /* retención: factura > umbral de caja chica → queda «Por retener»; si no, IVA no aplica por norma.
+       Sin ser agente de IVA solo cuenta el ISLR, cualquiera que sea el monto */
     var umbralBs = r2((+DB.config.ut || 0) * (+DB.config.cajaUT || 20)), totBs = r2(conv(d.total, m, 'Bs', ts));
     var id = Caja.G.id, doc;
     if (id) { doc = Object.assign(docDe(id), d, { mod: new Date().toISOString(), modPor: yo() }); }
     else { doc = Object.assign({ id: uid('dc'), pagos: [], creado: new Date().toISOString(), por: yo() }, d); DB.documentos.push(doc); }
     if (Caja.G.pre) { doc.refBanco = Caja.G.pre.refBanco; doc.movsBanco = Caja.G.pre.movsBanco; }
-    if (fa && totBs <= umbralBs) { doc.ivaNoAplica = 'Caja chica ≤ ' + (+DB.config.cajaUT || 20) + ' U.T. (Prov. SNAT/2015/0049)'; if (!(+(p || {}).pctIslr)) doc.islrNoAplica = 'Proveedor sin % de ISLR'; }
+    if (fa && (totBs <= umbralBs || !Calc.agenteIva())) { if (Calc.agenteIva()) doc.ivaNoAplica = 'Caja chica ≤ ' + (+DB.config.cajaUT || 20) + ' U.T. (Prov. SNAT/2015/0049)'; else delete doc.ivaNoAplica; if (!(+(p || {}).pctIslr)) doc.islrNoAplica = 'Proveedor sin % de ISLR'; }
     else if (fa) { delete doc.ivaNoAplica; delete doc.islrNoAplica; }
     Store.save(); UI.cerrarModal();
     toast(id ? 'Gasto actualizado' : 'Gasto registrado en ' + c.codigo);
