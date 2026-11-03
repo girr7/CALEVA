@@ -746,6 +746,7 @@ tr.cx-anul td{color:#98a6b8;text-decoration:line-through}
 .cxacc .btn.gr,.cxin .btn.gr{background:#fff!important;color:var(--mut)!important;border:1px solid var(--rule,#d5dde8)!important}
 .cxacc .btn.o{background:#eef1ff!important;color:var(--blue)!important;border:1px solid #c3cdf9!important}
 .cx-accnota{margin-left:auto;font-size:11px}
+.cx-subiendo{opacity:.65;pointer-events:none}
 .cx-filebtn{cursor:pointer;text-transform:none!important;letter-spacing:0!important;font-size:12.5px!important}
 .cx-radios{display:flex;gap:22px;margin:0 0 10px}
 .cx-chips{margin-bottom:14px}
@@ -1228,10 +1229,12 @@ var Calc = {
   agenteIva: function () { var h = DB.config.ivaAgenteHasta; return !h || hoy() <= h; },
   /* sin ser agente no se emite IVA a ninguna factura pendiente, sea cual sea su fecha (confirmado por el contador) */
   ivaNoAplica: function (d) { return d.ivaNoAplica || (d.tipo === 'factura' && !Calc.agenteIva() ? 'Caleva fue agente de IVA hasta el ' + fdmy(DB.config.ivaAgenteHasta) : ''); },
+  /* el % de ISLR está en el proveedor: sin él la factura no lleva ISLR ni pide nada antes de pagarse */
+  islrNoAplica: function (d) { return d.islrNoAplica || (d.tipo === 'factura' && !(+(provDe(d.provId) || {}).pctIslr) ? 'Proveedor sin % de ISLR' : ''); },
   /* factura: IVA y ISLR resueltos (emitidos o marcados «no aplica») */
   retenida: function (d) {
     if (d.tipo !== 'factura') return true;
-    return (!!Calc.ret(d, 'iva') || !!Calc.ivaNoAplica(d)) && (!!Calc.ret(d, 'islr') || !!d.islrNoAplica);
+    return (!!Calc.ret(d, 'iva') || !!Calc.ivaNoAplica(d)) && (!!Calc.ret(d, 'islr') || !!Calc.islrNoAplica(d));
   },
   estado: function (d) {
     if (d.anulado) return 'Anulado';
@@ -1621,13 +1624,14 @@ var Docs = {
       '<tr><td><b>Total</b></td><td class="num"><b>' + mon(d.total, d.moneda) + '</b></td></tr><tr><td>Retenciones</td><td class="num">−' + mon(Calc.retDoc(d), d.moneda) + '</td></tr><tr><td><b>Neto a pagar</b></td><td class="num"><b>' + mon(Calc.neto(d), d.moneda) + '</b></td></tr>' +
       '<tr><td>Pagado</td><td class="num">' + mon(Calc.pagado(d), d.moneda) + '</td></tr><tr><td><b>Saldo</b></td><td class="num"><b>' + mon(Math.max(0, Calc.saldo(d)), d.moneda) + '</b></td></tr></tbody></table>' +
       (Calc.saldo(d) < -0.005 ? '<div class="hint cx-rojo"><b>Pagado de más: ' + mon(-Calc.saldo(d), d.moneda) + '.</b> Se pagó antes de la retención: el proveedor debe devolverlo o compensarlo.</div>' : '') +
-      (Calc.ivaNoAplica(d) || d.islrNoAplica ? '<div class="hint">' + (Calc.ivaNoAplica(d) ? 'IVA: no aplica (' + esc(Calc.ivaNoAplica(d)) + '). ' : '') + (d.islrNoAplica ? 'ISLR: no aplica (' + esc(d.islrNoAplica) + ').' : '') + '</div>' : '') +
+      (Calc.ivaNoAplica(d) || Calc.islrNoAplica(d) ? '<div class="hint">' + (Calc.ivaNoAplica(d) ? 'IVA: no aplica (' + esc(Calc.ivaNoAplica(d)) + '). ' : '') + (Calc.islrNoAplica(d) ? 'ISLR: no aplica (' + esc(Calc.islrNoAplica(d)) + ').' : '') + '</div>' : '') +
       (rr ? '<h4 class="cx-h4">Retenciones</h4><table class="itemtbl"><thead><tr><th>Tipo</th><th>N°</th><th class="center">Fecha</th><th class="num">Monto</th><th>Estado</th><th></th></tr></thead><tbody>' + rr + '</tbody></table>' : '') +
       (pp ? '<h4 class="cx-h4">Pagos</h4><table class="itemtbl"><thead><tr><th class="center">Fecha</th><th>Forma</th><th class="num">Monto</th><th class="num">Equiv. ' + d.moneda + '</th><th>Referencia</th><th>Comprobante</th></tr></thead><tbody>' + pp + '</tbody></table>' : '') +
       ((d.pedido || d.et) ? '<div class="hint">Pedido <b>' + esc(Seg.etiqueta(d.pedido) || '—') + '</b> · ET <b>' + esc(d.et || '—') + '</b></div>' : '') + (d.obs ? '<div class="hint"><b>Obs.:</b> ' + esc(d.obs) + '</div>' : '') +
       (d.anulado ? '<div class="hint cx-rojo">Anulado: ' + esc(d.motivoAnul) + '</div>' : '') +
       (Caja.esGasto(d) ? '<div class="hint">Gasto de caja chica <b>' + esc((Caja.de(d.cajaId) || {}).nombre || '') + '</b> · ' + esc(d.categoria || '') + ' · ' + esc(d.concepto || '') + ' · estado <b>' + Caja.estadoGasto(d) + '</b></div>' : '') +
-      (d.tipo === 'reposicion' ? '<div class="frow" style="margin-top:10px"><button class="btn o" onclick="Caja.rendicion(\'' + d.id + '\')">📋 Ver rendición</button></div>' : ''));
+      (d.tipo === 'reposicion' ? '<div class="frow" style="margin-top:10px"><button class="btn o" onclick="Caja.rendicion(\'' + d.id + '\')">📋 Ver rendición</button></div>' : '') +
+      (Caja.esGasto(d) ? '<div class="frow" style="margin-top:10px"><button class="btn o" onclick="Caja.soportes(\'' + d.id + '\')">📎 Soportes (' + (d.soportes || []).length + ')</button></div>' : ''));
   }
 };
 
@@ -1646,7 +1650,7 @@ var Ret = {
     if (!p) return;
     var fal = []; if (!p.direccion) fal.push('la dirección fiscal'); if (!RIF.partes(p.rif)) fal.push('un RIF válido');
     if (fal.length) { toast('Complete en el proveedor ' + fal.join(' y ') + ' antes de retener'); Prov.editar(p.id); return; }
-    var hecho = { iva: Calc.ret(d, 'iva') || (Calc.ivaNoAplica(d) ? { num: '— no aplica: ' + Calc.ivaNoAplica(d) } : null), islr: Calc.ret(d, 'islr') || (d.islrNoAplica ? { num: '— no aplica: ' + d.islrNoAplica } : null) };
+    var hecho = { iva: Calc.ret(d, 'iva') || (Calc.ivaNoAplica(d) ? { num: '— no aplica: ' + Calc.ivaNoAplica(d) } : null), islr: Calc.ret(d, 'islr') || (Calc.islrNoAplica(d) ? { num: '— no aplica: ' + Calc.islrNoAplica(d) } : null) };
     var t = d.moneda === 'Bs' ? 1 : d.tasa, baseBs = r2(d.base * t);
     var pctIva = p.pctIva == null || p.pctIva === '' ? DB.config.pctIvaDefecto : +p.pctIva;
     var conc = p.conceptoIslr || 'SERVICIOS', pctIslr = +p.pctIslr || 0;
@@ -1853,7 +1857,7 @@ var Pag = {
       h += rI ? fila('− Retención IVA ' + fmt(pctI, 0) + '% del IVA · N° ' + rI.num, rIdoc, rI.monto, 'comprobante del ' + fdmy(rI.fecha))
               : Calc.agenteIva() ? fila('− Retención IVA', 0, 0, Calc.ivaNoAplica(d) ? 'no aplica: ' + esc(Calc.ivaNoAplica(d)) : '') : '';
       h += rS ? fila('− Retención ISLR ' + (rS.pct % 1 ? fmt(rS.pct) : rS.pct) + '% · N° ' + rS.num, rSdoc, rS.monto, esc(rS.concepto || '') + ' · base Bs ' + fmt(rS.base) + (+rS.sustraendo ? ' − sustraendo Bs ' + fmt(rS.sustraendo) : ''))
-              : fila('− Retención ISLR', 0, 0, d.islrNoAplica ? 'no aplica: ' + esc(d.islrNoAplica) : '');
+              : fila('− Retención ISLR', 0, 0, Calc.islrNoAplica(d) ? 'no aplica: ' + esc(Calc.islrNoAplica(d)) : '');
       h += fila('<b>Total retenido</b>', r2(rIdoc + rSdoc), r2((rI ? rI.monto : 0) + (rS ? rS.monto : 0)), '', 'cx-sep cx-b');
       /* el IVA que queda se ajusta para que base + IVA no retenido + exento − ISLR = neto (redondeo de la conversión) */
       var ivaRest = r2(neto - d.base - (+d.exento || 0) + rSdoc), ivaRestBs = r2(d.iva * tf - (rI ? rI.monto : 0));
@@ -2284,8 +2288,13 @@ var Caja = {
   esBanco: function (c) { return c.medio === 'banco'; },
   repuesto: function (d) { var r = Caja.rep(d); return !!(r && Calc.estado(r) === 'Pagado'); },
   estadoGasto: function (d) { if (!Calc.retenida(d)) return 'Por retener'; var r = Caja.rep(d); if (r) return Calc.estado(r) === 'Pagado' ? 'Repuesto' : 'En reposición'; return 'Por reponer'; },
-  /* gastos aún no repuestos, en la moneda en que opera la caja */
-  gastoPend: function (c) { return r2(Caja.gastos(c).filter(function (d) { return !Caja.repuesto(d); }).reduce(function (a, d) { return a + Caja.consumo(d, c); }, 0)); },
+  /* gastos aún no repuestos, en la moneda en que opera la caja; un abono a la reposición ya repuso esa parte de sus gastos */
+  gastoPend: function (c) {
+    var pend = {}, total = 0;
+    Caja.gastos(c).forEach(function (d) { if (Caja.repuesto(d)) return; var r = Caja.rep(d), x = Caja.consumo(d, c); total += x; if (r) pend[r.id] = (pend[r.id] || 0) + x; });
+    Caja.reposiciones(c).forEach(function (r) { if (!r.anulado && pend[r.id]) total -= Math.min(pend[r.id], conv(Calc.pagado(r), r.moneda, Caja.monOp(c), BCV.hoy)); });
+    return r2(total);
+  },
   sinRendir: function (c) { return Caja.gastos(c).filter(function (d) { return !Caja.rep(d); }); },
   /* Bs que salieron de la cuenta por un documento: neto + comisión */
   bsDe: function (d) { return r2(conv(Calc.neto(d), d.moneda, 'Bs', d.tasasCaja || BCV.hoy) + Caja.comisionBs(d)); },
@@ -2400,7 +2409,7 @@ var Caja = {
     var tot = 0;
     var body = G.map(function (d) {
       var e = Caja.estadoGasto(d), pt = Caja.partes(d, c), cs = r2(pt.neto + pt.com); tot += cs;
-      var acc = '<span class="cx-lnk" title="Ver detalle" onclick="Docs.ver(\'' + d.id + '\')">👁</span>';
+      var acc = '<span class="cx-lnk" title="Ver detalle" onclick="Docs.ver(\'' + d.id + '\')">👁</span> ' + Caja.lnkSoportes(d);
       if (e === 'Por retener' && Rol.ed('ret')) acc += ' <span class="cx-lnk cx-ret" onclick="Ret.abrir(\'' + d.id + '\')">🧾 Retener</span>';
       if (!Caja.rep(d) && !Calc.rets(d).length && Rol.ed('caja') && d.tipo !== 'cargo') acc += ' <span class="cx-lnk" title="Editar" onclick="Caja.gasto(\'' + c.id + '\',\'' + d.id + '\')">✎</span>';
       if (!Caja.rep(d) && !Calc.rets(d).length && Rol.esAdmin()) acc += ' <span class="cx-lnk cx-rojo" title="Eliminar" onclick="Caja.borrarGasto(\'' + d.id + '\')">🗑</span>';
@@ -2726,7 +2735,7 @@ var Caja = {
   /* rendición: detalle + asiento sugerido (gasto por categoría y centro de costo contra Bancos) */
   rendicion: function (rid) {
     var r = docDe(rid), c = Caja.de(r.cajaId), G = (r.gastos || []).map(docDe).filter(Boolean), mo = Caja.monOp(c);
-    var filas = G.map(function (d) { var pt = Caja.partes(d, c); return '<tr><td class="center">' + fdmy(d.fecha) + '</td><td>' + TIPOS[d.tipo] + ' ' + esc(d.numero) + '</td><td>' + esc(nomDoc(d)) + '</td><td>' + esc(d.concepto) + '</td><td>' + esc(d.categoria) + '</td><td class="mono">' + esc(d.pedido || 'ADM') + '</td><td class="num">' + mon(d.total, d.moneda) + '</td><td class="num">' + (Calc.retDoc(d) ? '−' + fmt(Calc.retDoc(d)) : '—') + '</td><td class="num">' + (pt.com ? fmt(pt.com) : '—') + '</td><td class="num"><b>' + mon(r2(pt.neto + pt.com), mo) + '</b></td></tr>'; }).join('');
+    var filas = G.map(function (d) { var pt = Caja.partes(d, c); return '<tr><td class="center">' + fdmy(d.fecha) + '</td><td>' + TIPOS[d.tipo] + ' ' + esc(d.numero) + ((d.soportes || []).length ? ' ' + Caja.lnkSoportes(d) : '') + '</td><td>' + esc(nomDoc(d)) + '</td><td>' + esc(d.concepto) + '</td><td>' + esc(d.categoria) + '</td><td class="mono">' + esc(d.pedido || 'ADM') + '</td><td class="num">' + mon(d.total, d.moneda) + '</td><td class="num">' + (Calc.retDoc(d) ? '−' + fmt(Calc.retDoc(d)) : '—') + '</td><td class="num">' + (pt.com ? fmt(pt.com) : '—') + '</td><td class="num"><b>' + mon(r2(pt.neto + pt.com), mo) + '</b></td></tr>'; }).join('');
     var A = Caja.asiento(G, c, r);
     var asiento = Object.keys(A).sort().map(function (k) { var x = k.split('|'), v = A[k]; return '<tr><td>' + esc(x[0]) + (Caja.esCtaFondo(x[0]) ? '' : ' – ' + esc(x[1] ? 'Pedido ' + x[1] : 'Administración')) + '</td>' + (v < 0 ? '<td></td><td class="num">' + mon(-v, mo) + '</td>' : '<td class="num">' + mon(v, mo) + '</td><td></td>') + '</tr>'; }).join('');
     var totAs = r2(Object.keys(A).reduce(function (a, k) { return a + Math.max(0, A[k]); }, 0));
@@ -2738,6 +2747,40 @@ var Caja = {
       '<tr><td>Bancos</td><td></td><td class="num">' + mon(r.total, r.moneda) + '</td></tr><tr class="cx-b"><td>Totales</td><td class="num">' + mon(totAs, r.moneda) + '</td><td class="num">' + mon(totAs, r.moneda) + '</td></tr></tbody></table>' +
       '<div class="cxf">' + Fm.acc((Calc.estado(r) !== 'Pagado' && !r.anulado && Rol.paga() ? '<button class="btn g" onclick="UI.cerrarModal();Pag.abrir(\'' + r.id + '\')">💵 Pagar reposición</button>' : '') +
         '<button class="btn gr" onclick="Caja.excelRend(\'' + r.id + '\')">⬇ Excel</button><button class="btn gr" onclick="UI.cerrarModal()">Cerrar</button>') + '</div>', true);
+  },
+  /* soportes del gasto (PDF o imágenes), también en gastos ya cargados o repuestos.
+     En Dropbox: /CxP/Gastos/<mes del gasto>/<proveedor>/<documento>/ */
+  lnkSoportes: function (d) { var n = (d.soportes || []).length; return '<span class="cx-lnk' + (n ? '' : ' cx-mut') + '" title="Soportes del gasto" onclick="Caja.soportes(\'' + d.id + '\')">📎' + (n ? ' ' + n : '') + '</span>'; },
+  soportes: function (id) {
+    var d = docDe(id), ed = Rol.ed('caja'), quita = ed && (!Caja.repuesto(d) || Rol.esAdmin());
+    var filas = (d.soportes || []).map(function (s) {
+      return '<tr><td>' + (s.path ? '<span class="cx-lnk" onclick="Nube.verComp(\'' + jsq(s.path) + '\')">📎 ' + esc(s.nombre) + '</span>' : '📎 ' + esc(s.nombre)) + '</td><td class="center">' + fdmy((s.creado || '').slice(0, 10)) + '</td><td>' + esc(s.por || '') + '</td>' +
+        '<td class="center">' + (quita ? '<span class="cx-lnk cx-rojo" title="Quitar" onclick="Caja.quitarSoporte(\'' + id + '\',\'' + s.id + '\')">🗑</span>' : '') + '</td></tr>'; }).join('');
+    Caja.spId = id;
+    UI.modal('Soportes · ' + TIPOS[d.tipo] + ' ' + d.numero + ' · ' + nomDoc(d),
+      '<div class="info-pedido cx-chips"><span>Fecha <b>' + fdmy(d.fecha) + '</b></span><span>Total <b>' + mon(d.total, d.moneda) + '</b></span>' + (d.concepto ? '<span>Concepto <b>' + esc(d.concepto) + '</b></span>' : '') + '</div>' +
+      '<table class="itemtbl" id="tSoportes"><thead><tr><th>Archivo</th><th class="center" style="width:90px">Cargado</th><th>Por</th><th style="width:40px"></th></tr></thead><tbody>' + (filas || '<tr><td colspan="4" class="empty">Este gasto aún no tiene soportes</td></tr>') + '</tbody></table>' +
+      '<div class="cxf">' + Fm.acc((ed ? '<label class="btn g cx-filebtn" id="spBtn">📎 Agregar PDF o imágenes<input type="file" accept=".pdf,.jpg,.jpeg,.png" multiple style="display:none" onchange="Caja.subirSoportes(\'' + id + '\',this)"></label>' : '') + '<button class="btn gr" onclick="UI.cerrarModal()">Cerrar</button>') + '</div>');
+  },
+  subirSoportes: function (id, inp) {
+    var T = [].slice.call(inp.files || []), F = T.filter(function (f) { return /\.(pdf|jpe?g|png)$/i.test(f.name); }), mal = T.length - F.length, err = [], d0 = docDe(id); inp.value = '';
+    if (!F.length) { toast('Solo se aceptan PDF, JPG o PNG'); return; }
+    var bt = $('spBtn'); if (bt) { bt.classList.add('cx-subiendo'); bt.firstChild.textContent = 'Subiendo ' + F.length + ' archivo(s)…'; }
+    Promise.all(F.map(function (f) {
+      var c = { nombre: f.name, tam: f.size, file: f };
+      var p = Store.cloud() ? Nube.subirComp(c, d0, d0.fecha, '/CxP/Gastos/') : Promise.resolve({ nombre: f.name, tam: f.size, local: true });
+      return p.catch(function (e) { err.push(f.name + ': ' + e.message); return null; });
+    })).then(function (R) {
+      var d = docDe(id), L = R.filter(Boolean);
+      if (L.length) { d.soportes = (d.soportes || []).concat(L.map(function (x) { return Object.assign(x, { id: uid('sp'), creado: new Date().toISOString(), por: yo() }); })); Store.save(); UI.render(); }
+      if (Caja.spId === id && $('modalBg').classList.contains('on')) Caja.soportes(id);
+      toast(err.length ? 'No se subieron ' + err.length + ': ' + err.join(' · ') : L.length + ' soporte(s) agregado(s)' + (mal ? ' · ' + mal + ' omitido(s): solo PDF, JPG o PNG' : ''));
+    });
+  },
+  quitarSoporte: function (id, sid) {
+    var d = docDe(id), s = (d.soportes || []).filter(function (x) { return x.id === sid; })[0]; if (!s) return;
+    if (!confirm('¿Quitar «' + s.nombre + '» de este gasto?\n\nEl archivo sigue en Dropbox y queda constancia en la auditoría.')) return;
+    d.soportes = d.soportes.filter(function (x) { return x.id !== sid; }); Store.save(); UI.render(); Caja.soportes(id); toast('Soporte quitado');
   },
   /* cómo se llegó al monto: fondo autorizado a la tasa, menos lo que ya hay en la cuenta */
   calcRep: function (r, c) {
@@ -3136,6 +3179,7 @@ var Aud = {
       if (!a) { ev.push(Aud.alta(ent, b)); (b.pagos || []).forEach(function (p) { ev.push(Aud.pago(b, p, '+')); }); return; }
       var cc = Aud.campos(a, b);
       Aud.sub(a.pagos, b.pagos).forEach(function (x) { ev.push(Aud.pago(b, x.o, x.op)); });
+      Aud.sub(a.soportes, b.soportes).forEach(function (x) { ev.push({ ent: 'caja', ref: id, accion: x.op === '+' ? 'Soporte agregado' : 'Soporte quitado', sujeto: Aud.sujeto('doc', b), resumen: x.o.nombre }); });
       Aud.sub(a.aportes, b.aportes).forEach(function (x) { if (x.op === '+') ev.push({ ent: 'caja', ref: id, accion: 'Aporte al fondo', sujeto: Aud.sujeto('caja', b), resumen: 'Bs ' + fmt(x.o.bs) + ' · ' + fdmy(x.o.fecha) + (x.o.ref ? ' · ref. ' + x.o.ref : '') }); });
       Aud.sub(a.conciliaciones, b.conciliaciones, 'fecha').forEach(function (x) { if (x.op === '+') ev.push(Aud.concil(b, x.o)); });
       if (!cc.length) return;
@@ -3457,10 +3501,10 @@ var Nube = {
     });
   },
   limpio: function (s, max) { s = String(s || '').replace(/[\\\/:*?"<>|\u0000-\u001f]+/g, '-').replace(/\.{2,}/g, '.').replace(/\s+/g, ' ').trim().slice(0, max || 60); return s.replace(/[. ]+$/, '') || 'sin-nombre'; },
-  /* /CxP/<año-mes>/<proveedor>/<documento>/<hora>_<nombre>.<pdf|jpg|png> */
-  subirComp: function (c, d, fecha) {
+  /* <raíz>/<año-mes>/<proveedor>/<documento>/<hora>_<nombre>.<pdf|jpg|png>; raíz: /CxP/ pagos, /CxP/Gastos/ soportes de caja chica */
+  subirComp: function (c, d, fecha, raiz) {
     var ext = (/\.(pdf|jpe?g|png)$/i.exec(c.nombre) || ['.pdf'])[0], z = uid('');
-    var path = '/CxP/' + fecha.slice(0, 7) + '/' + Nube.limpio(nomDoc(d)) + '/' + Nube.limpio(TIPOS[d.tipo] + ' ' + d.numero) + '/' + z + '_' + Nube.limpio(c.nombre.replace(/\.[^.]+$/, '')) + ext;
+    var path = (raiz || '/CxP/') + fecha.slice(0, 7) + '/' + Nube.limpio(nomDoc(d)) + '/' + Nube.limpio(TIPOS[d.tipo] + ' ' + d.numero) + '/' + z + '_' + Nube.limpio(c.nombre.replace(/\.[^.]+$/, '')) + ext;
     return Nube.fn({ accion: 'subir', path: path }).then(function (x) {
       return fetch(x.link, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: c.file }).then(function (r) {
         if (!r.ok) throw Error('Dropbox no aceptó ' + c.nombre + ' (' + r.status + ')');
