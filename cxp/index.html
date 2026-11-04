@@ -862,6 +862,18 @@ tr.cx-anul td{color:#98a6b8;text-decoration:line-through}
 .cx-nube{display:none;position:fixed;left:16px;bottom:16px;z-index:500;max-width:520px;padding:10px 14px;border-radius:9px;background:var(--navy);color:#fff;font-size:12.5px;line-height:1.4;box-shadow:0 6px 20px rgba(0,0,0,.25)}
 .cx-nube.on{display:block}
 .cx-nube.err{background:#b42318}
+/* visor de comprobantes y soportes, como el de Seguimiento */
+#cxVisorOv{position:fixed;inset:0;z-index:9000;background:rgba(0,20,45,.72);display:flex;align-items:center;justify-content:center;padding:16px}
+#cxVisorOv .pp-box{background:#fff;border-radius:14px;box-shadow:0 24px 70px rgba(0,0,0,.45);width:min(1100px,96vw);height:92vh;display:flex;flex-direction:column;overflow:hidden}
+#cxVisorOv .pp-bar{display:flex;align-items:center;gap:12px;padding:10px 14px;background:linear-gradient(120deg,#001E3D,#002E5B);color:#fff}
+#cxVisorOv .pp-t{flex:1;min-width:0;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#cxVisorOv .pp-a{color:#fff;font-size:12.5px;font-weight:700;padding:6px 12px;border-radius:8px;background:rgba(255,255,255,.15);text-decoration:none;white-space:nowrap}
+#cxVisorOv .pp-x{background:rgba(255,255,255,.15);border:0;color:#fff;width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:18px;line-height:1}
+#cxVisorOv iframe{flex:1;width:100%;border:0;background:#525659}
+#cxVisorOv .pp-img{flex:1;min-height:0;overflow:auto;background:#525659;display:flex;align-items:flex-start;justify-content:center;padding:12px}
+#cxVisorOv .pp-img img{max-width:100%;height:auto;background:#fff}
+#cxVisorOv .pp-cargando{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:#5b6b7d;text-align:center;padding:20px}
+@media (max-width:768px){#cxVisorOv{padding:0}#cxVisorOv .pp-box{width:100vw;height:100vh;border-radius:0}}
 </style>
 </head>
 <body>
@@ -1631,7 +1643,7 @@ var Docs = {
       (d.anulado ? '<div class="hint cx-rojo">Anulado: ' + esc(d.motivoAnul) + '</div>' : '') +
       (Caja.esGasto(d) ? '<div class="hint">Gasto de caja chica <b>' + esc((Caja.de(d.cajaId) || {}).nombre || '') + '</b> · ' + esc(d.categoria || '') + ' · ' + esc(d.concepto || '') + ' · estado <b>' + Caja.estadoGasto(d) + '</b></div>' : '') +
       (d.tipo === 'reposicion' ? '<div class="frow" style="margin-top:10px"><button class="btn o" onclick="Caja.rendicion(\'' + d.id + '\')">📋 Ver rendición</button></div>' : '') +
-      (Caja.esGasto(d) ? '<div class="frow" style="margin-top:10px"><button class="btn o" onclick="Caja.soportes(\'' + d.id + '\')">📎 Soportes (' + (d.soportes || []).length + ')</button></div>' : ''));
+      (Caja.esGasto(d) ? '<div class="frow" style="margin-top:10px"><button class="btn o" onclick="Caja.soportes(\'' + d.id + '\',\'\')">📎 Soportes (' + (d.soportes || []).length + ')</button></div>' : ''));
   }
 };
 
@@ -1808,7 +1820,7 @@ var Pag = {
   f: { mes: '', prov: '' }, P: null,
   /* Lo usual: documento en USD (a veces EUR o Bs) y pago en Bs a la tasa BCV del día del pago,
      por el NETO que dejan las retenciones. La pantalla muestra ese desglose y el monto en Bs. */
-  abrir: function (docId) {
+  abrir: function (docId, abono) {
     if (!Rol.paga()) { toast('No tiene permiso para registrar pagos'); return; }
     var d = docDe(docId), p = provDe(d.provId) || {};
     if (!Calc.retenida(d)) { toast('Primero emita las retenciones de la factura'); Ret.abrir(docId); return; }
@@ -1831,6 +1843,7 @@ var Pag = {
         '<label class="btn gr cx-filebtn">📎 Adjuntar<input type="file" accept=".pdf,.jpg,.jpeg,.png" multiple style="display:none" onchange="Pag.pick(this)"></label></div>',
         Store.cloud() ? 'Se guarda en Dropbox (/CxP/…), como los comprobantes de Seguimiento.' : 'En el draft solo se anota el nombre.') +
       Fm.acc('<button class="btn g" onclick="Pag.guardar()">Registrar pago</button><button class="btn gr" onclick="UI.cerrarModal()">Cancelar</button>') + '</div>');
+    if (abono) { $('pgMon').value = d.moneda; Num.set('pgMonto', abono); this.P.montoMano = true; }   /* el abono ya viene de ↻ Reponer */
     this.onFecha();
   },
   /* Desglose completo: factura (base, IVA, exento, total) → retenciones → neto (base + IVA no
@@ -1903,7 +1916,7 @@ var Pag = {
           : '<div class="cx-mut" style="font-size:11px;margin-top:3px">Diferencia cambiaria vs. tasa de la factura: Bs ' + fmt(sBs - r2(Calc.netoBs(d) - Calc.pagado(d) * d.tasa)) + '</div>');
     $('pgInfo').innerHTML = eq > s + 0.005 ? '<span class="cx-rojo">Supera el saldo en ' + mon(eq - s, d.moneda) + '</span>' : (s - eq > 0.005 ? 'Quedará un saldo de <b>' + mon(s - eq, d.moneda) + '</b> (abono)' : 'Cancela el documento');
   },
-  comps: function (x) { return (x.comps || []).map(function (c) { return c.path ? '<span class="cx-lnk" onclick="Nube.verComp(\'' + jsq(c.path) + '\')">📎 ' + esc(c.nombre) + '</span>' : '📎 ' + esc(c.nombre); }).join('<br>'); },
+  comps: function (x) { return (x.comps || []).map(function (c) { return c.path ? '<span class="cx-lnk" onclick="Nube.verComp(\'' + jsq(c.path) + '\',\'' + jsq(c.nombre) + '\')">📎 ' + esc(c.nombre) + '</span>' : '📎 ' + esc(c.nombre); }).join('<br>'); },
   pick: function (inp) { [].forEach.call(inp.files || [], function (f) { if (/\.(pdf|jpe?g|png)$/i.test(f.name)) Pag.P.comps.push({ nombre: f.name, tam: f.size, local: true, file: f }); }); inp.value = ''; $('pgComps').innerHTML = this.P.comps.map(function (c) { return '📎 ' + esc(c.nombre); }).join('<br>') || 'Sin comprobante.'; },
   guardar: function () {
     var d = docDe(this.P.docId), m = $('pgMon').value, x = r2(Num.get('pgMonto')), ts = { USD: Num.get('pgTUSD'), EUR: Num.get('pgTEUR') };
@@ -2328,9 +2341,10 @@ var Caja = {
   uso: function (c) { var v = Caja.fondoVig(c), g = Caja.gastoPend(c); return v > 0 ? g / v : g > 0 ? 1 : 0; },
   /* reposiciones generadas y aún sin pagar: ese dinero ya está en camino */
   porPagar: function (c) { return r2(Caja.reposiciones(c).reduce(function (a, r) { return r.anulado ? a : a + Math.max(0, Calc.saldo(r)); }, 0)); },
-  /* cuánto reponer hoy: cuenta bancaria, fondo a la tasa de hoy − saldo − lo que ya está por pagar; efectivo, los gastos */
+  /* cuánto reponer hoy: fondo referenciado en divisa, su valor a la tasa de hoy − saldo − lo que ya está por pagar;
+     fondo en Bs y efectivo, solo los gastos: el autorizado es un tope y el fondo solo crece con un aporte */
   aReponer: function (c) {
-    if (Caja.esBanco(c)) return r2(Caja.fondoATasa(c, BCV.hoy) - Caja.disponible(c) - Caja.porPagar(c));
+    if (Caja.esBanco(c) && c.moneda !== 'Bs') return r2(Caja.fondoATasa(c, BCV.hoy) - Caja.disponible(c) - Caja.porPagar(c));
     return r2(Caja.sinRendir(c).reduce(function (a, d) { return a + Caja.consumo(d, c); }, 0));
   },
   /* la reposición se deposita a la tasa de ese día: si aún no tiene pagos, el fondo se recalcula a la tasa del pago */
@@ -2387,8 +2401,9 @@ var Caja = {
         '<div class="cc-cc">' + (Caja.esBanco(c) ? '🏦 ' + esc(c.banco || 'Cuenta bancaria') + (c.cuenta ? ' ···' + esc(String(c.cuenta).slice(-4)) : '') : '💵 Efectivo') +
           (c.conciliaciones && c.conciliaciones.length ? ' · conciliada al ' + fdmy(c.conciliaciones[c.conciliaciones.length - 1].fecha) : (Caja.esBanco(c) ? ' · <span class="cx-nar">sin conciliar</span>' : '')) + '</div>' +
         (c.pedido || c.et ? '<div class="cc-cc">Centro de costo: <b>' + esc(Seg.etiqueta(c.pedido) || '—') + '</b>' + (c.et ? ' · ET ' + esc(c.et) : '') + '</div>' : '<div class="cc-cc">Centro de costo: <b>Administración general</b></div>') +
-        '<div class="cc-nums"><div><span>Fondo</span><b>' + mon(Caja.fondoVig(c), mo) + '</b></div><div><span>Usado</span><b>' + mon(Caja.gastoPend(c), mo) + '</b></div><div><span>Disponible</span><b class="' + (disp <= 0.005 ? 'cx-rojo' : '') + '">' + mon(disp, mo) + '</b></div></div>' +
+        '<div class="cc-nums"><div title="Disponible + usado. No es el monto autorizado ni el fondeo inicial"><span>Fondo actual</span><b>' + mon(Caja.fondoVig(c), mo) + '</b></div><div><span>Usado</span><b>' + mon(Caja.gastoPend(c), mo) + '</b></div><div><span>Disponible</span><b class="' + (disp <= 0.005 ? 'cx-rojo' : '') + '">' + mon(disp, mo) + '</b></div></div>' +
         (Caja.esBanco(c) ? '<div class="cc-bs">Autorizado <b>' + mon(c.monto, c.moneda) + '</b>' + (c.moneda !== 'Bs' ? ' · hoy Bs ' + fmt(Caja.fondoATasa(c, BCV.hoy)) + ' a BCV ' + fmt(BCV.hoy[c.moneda] || 0, 4) : '') +
+          (Caja.sinFondeo(c) ? '' : ' · fondeo inicial <b>Bs ' + fmt(+c.fondeoBs || 0) + '</b>' + (r2(Caja.bsEntrado(c) - (+c.fondeoBs || 0)) > 0 ? ' · depositado después <b>Bs ' + fmt(r2(Caja.bsEntrado(c) - (+c.fondeoBs || 0))) + '</b>' : '')) +
           (Caja.sinFondeo(c) ? ' · <span class="cx-nar">sin fondeo registrado</span>' : c.fondeoEstimado ? ' · <span class="cx-nar" title="Calculado a la tasa BCV del ' + fdmy(c.fondeoFecha) + '. Edite la caja (✎) y coloque lo realmente depositado.">fondeo estimado, verifique</span>' : '') +
           (Caja.sinRendir(c).length && Caja.aReponer(c) > 0 ? ' · a reponer hoy <b>Bs ' + fmt(Caja.aReponer(c)) + '</b>' : '') + '</div>' : '') +
         '<div class="cc-bar"><i class="cc-' + nv + '" style="width:' + (u * 100).toFixed(1) + '%"></i><em style="left:' + (+c.umbral || 80) + '%"></em></div>' +
@@ -2426,7 +2441,7 @@ var Caja = {
         (e !== 'Pagado' && e !== 'Anulado' && Rol.paga() ? ' <span class="cx-lnk cx-pag" onclick="Pag.abrir(\'' + r.id + '\')">💵 Pagar</span>' : '') + '</td></tr>';
     }).join('');
     return '<div class="card"><div class="section-hdr">Movimientos · ' + esc(c.nombre) + '<span class="section-hdr-right">' + G.length + ' gasto(s) · consumo ' + mon(tot, Caja.monOp(c)) + '</span></div><div class="section-body">' +
-      '<div class="toolbar"><label class="cx-chk"><input type="checkbox"' + (Caja.verTodos ? ' checked' : '') + ' onchange="Caja.verTodos=this.checked;Caja.render()"> Incluir gastos ya repuestos</label><span style="flex:1"></span><button class="btn gr" onclick="Caja.excel(\'' + c.id + '\')">⬇ Excel</button></div>' +
+      '<div class="toolbar"><label class="cx-chk"><input type="checkbox"' + (Caja.verTodos ? ' checked' : '') + ' onchange="Caja.verTodos=this.checked;Caja.render()"> Incluir gastos ya repuestos</label>' + (function () { var n = Caja.gastos(c).filter(function (d) { return Caja.repuesto(d) && !(d.soportes || []).length; }).length; return n && !Caja.verTodos ? ' <span class="cx-lnk" id="ccSinSop" onclick="Caja.verTodos=true;Caja.render()">📎 ' + n + ' repuesto(s) sin soporte</span>' : ''; })() + '<span style="flex:1"></span><button class="btn gr" onclick="Caja.excel(\'' + c.id + '\')">⬇ Excel</button></div>' +
       '<div style="overflow-x:auto"><table id="tCaja"><thead><tr><th class="center" style="width:80px">Fecha</th><th style="width:96px">Soporte</th><th style="width:80px">N°</th><th>Proveedor / beneficiario</th><th>Concepto</th><th style="width:150px">Categoría</th><th style="width:90px">Pedido</th>' +
       '<th class="num" style="width:100px">Total</th><th class="num" style="width:80px">Retenc.</th><th class="num" style="width:80px">Comisión</th><th class="num" style="width:100px">Consumo caja</th>' + (Caja.conRef(c) ? '<th class="num" style="width:80px" title="Equivalente informativo a la tasa BCV de la fecha del gasto">Ref. ' + c.moneda + '</th>' : '') + '<th class="center" style="width:108px">Estado</th><th class="center" style="width:110px"></th></tr></thead><tbody>' +
       (body || '<tr><td colspan="' + (Caja.conRef(c) ? 14 : 13) + '" class="empty">Sin gastos pendientes de reposición</td></tr>') + '</tbody></table></div>' +
@@ -2709,33 +2724,60 @@ var Caja = {
     var r = Caja.crearRep(c, g);
     if (r && !silencioso) toast('Caja en tope: se generó la reposición ' + r.numero + ' en Cuentas por pagar');
   },
+  /* ↻ Reponer: reposición total o abono. El abono genera la reposición por el total (o usa la que ya está por pagar) y registra ese pago */
   reponer: function (cid) {
-    var c = Caja.de(cid), g = Caja.sinRendir(c);
-    if (!g.length) { toast('No hay gastos por reponer'); return; }
-    var pr = g.filter(function (d) { return !Calc.retenida(d); });
-    if (pr.length) { toast(pr.length + ' factura(s) por retener: emita sus retenciones antes de la reposición'); return; }
-    var tot = Caja.aReponer(c), mo = Caja.monOp(c), pp = Caja.porPagar(c);
-    if (!(tot > 0)) { toast('No hace falta reponer: el saldo en cuenta ya cubre el fondo autorizado'); return; }
-    var det = Caja.esBanco(c) ? 'Fondo autorizado ' + mon(c.monto, c.moneda) + (c.moneda !== 'Bs' ? ' × BCV ' + fmt(BCV.hoy[c.moneda] || 0, 4) : '') + ' = Bs ' + fmt(Caja.fondoATasa(c, BCV.hoy)) + '\n− Saldo en cuenta Bs ' + fmt(Caja.disponible(c)) + (pp ? '\n− Otras reposiciones por pagar Bs ' + fmt(pp) : '') + '\n= A reponer ' : g.length + ' gasto(s) = ';
-    if (!confirm('Generar la reposición de ' + c.nombre + ':\n\n' + det + mon(tot, mo) + '\n\nQueda como cuenta por pagar a ' + c.responsable + '.\n\n¿Continuar?')) return;
-    var r = Caja.crearRep(c, g); if (r) { Store.save(); UI.render(); toast('Reposición ' + r.numero + ' creada en Cuentas por pagar'); Caja.rendicion(r.id); }
+    Caja.RP = null;
+    var c = Caja.de(cid), g = Caja.sinRendir(c), mo = Caja.monOp(c), pp = Caja.porPagar(c);
+    var pend = Caja.reposiciones(c).filter(function (r) { return !r.anulado && Calc.estado(r) !== 'Pagado'; }).sort(function (a, b) { return (a.creado || '').localeCompare(b.creado || ''); })[0];
+    if (g.filter(function (d) { return !Calc.retenida(d); }).length) { toast(g.filter(function (d) { return !Calc.retenida(d); }).length + ' factura(s) por retener: emita sus retenciones antes de la reposición'); return; }
+    var tot = g.length ? Caja.aReponer(c) : 0, nueva = tot > 0, paga = Rol.paga();
+    if (!nueva && !pend) { toast(g.length ? 'No hace falta reponer: el saldo en cuenta ya cubre el fondo autorizado' : 'No hay gastos por reponer'); return; }
+    if (!nueva && !paga) { toast('La reposición ' + pend.numero + ' ya está generada: su pago lo registra quien tiene permiso de pagos'); return; }
+    var monto = nueva ? tot : Math.max(0, Calc.saldo(pend)), mr = nueva ? mo : pend.moneda;
+    Caja.RP = { cid: cid, repId: nueva ? '' : pend.id, monto: monto, mon: mr };
+    var fila = function (t, v, cl) { return '<tr' + (cl ? ' class="' + cl + '"' : '') + '><td>' + t + '</td><td class="num">' + v + '</td></tr>'; };
+    var det = !nueva ? fila('Reposición ' + esc(pend.numero), mon(pend.total, pend.moneda)) + fila('− Abonado', mon(Calc.pagado(pend), pend.moneda)) + fila('<b>Saldo por pagar</b>', '<b>' + mon(monto, mr) + '</b>')
+      : (Caja.esBanco(c) && c.moneda !== 'Bs' ? fila('Fondo autorizado ' + mon(c.monto, c.moneda) + (c.moneda !== 'Bs' ? ' × BCV ' + fmt(BCV.hoy[c.moneda] || 0, 4) : ''), 'Bs ' + fmt(Caja.fondoATasa(c, BCV.hoy))) + fila('− Saldo en cuenta', 'Bs ' + fmt(Caja.disponible(c))) + (pp ? fila('− Otras reposiciones por pagar', 'Bs ' + fmt(pp)) : '') : fila(g.length + ' gasto(s)', mon(monto, mr))) + fila('<b>A reponer</b>', '<b>' + mon(monto, mr) + '</b>');
+    UI.modal('Reponer · ' + c.nombre,
+      '<table class="itemtbl"><tbody>' + det + '</tbody></table>' +
+      (paga ? '<div class="cx-radios" style="margin-top:12px"><label class="cx-chk"><input type="radio" name="rpModo" value="total" checked onchange="Caja.onModoRep()"> ' + (nueva ? 'Reposición total: ' : 'Pagar el saldo: ') + '<b>' + mon(monto, mr) + '</b></label><label class="cx-chk"><input type="radio" name="rpModo" value="abono" onchange="Caja.onModoRep()"> Abono</label></div>' : '') +
+      '<div class="cxf">' + (paga ? Fm.c(4, 'Monto del abono (' + mr + ') *', Fm.n('rpMonto', '', 2, 'class="n cx-fuerte"'), '', 'rp-abono') : '') + '</div>' +
+      '<div class="hint" id="rpInfo">' + (nueva ? 'Queda como cuenta por pagar a ' + esc(c.responsable) + '.' + (paga ? '' : ' El abono lo registra quien tiene permiso de pagos.') : 'Continúa al registro del pago.') + '</div>' +
+      '<div class="cxf">' + Fm.acc('<button class="btn g" id="rpOk" onclick="Caja.reponerOk()">' + (nueva ? 'Generar reposición' : 'Continuar al pago') + '</button><button class="btn gr" onclick="UI.cerrarModal()">Cancelar</button>') + '</div>');
+    Caja.onModoRep();
+  },
+  onModoRep: function () {
+    var m = document.querySelector('input[name=rpModo]:checked'), ab = !!m && m.value === 'abono', nueva = !Caja.RP.repId;
+    [].forEach.call(document.querySelectorAll('#modalBody .rp-abono'), function (e) { e.style.display = ab ? '' : 'none'; });
+    if (ab) { $('rpOk').textContent = 'Continuar al pago'; $('rpInfo').textContent = nueva ? 'Se genera la reposición por el total y se registra este abono. El saldo queda por pagar.' : 'Se registra este abono. El saldo queda por pagar.'; $('rpMonto').focus(); }
+    else if (m) { $('rpOk').textContent = nueva ? 'Generar reposición' : 'Continuar al pago'; $('rpInfo').textContent = nueva ? 'Queda como cuenta por pagar a ' + Caja.de(Caja.RP.cid).responsable + '.' : 'Continúa al registro del pago.'; }
+  },
+  reponerOk: function () {
+    var P = Caja.RP; if (!P) return;
+    var m = document.querySelector('input[name=rpModo]:checked'), ab = !!m && m.value === 'abono', x = ab ? r2(Num.get('rpMonto')) : 0;
+    if (ab && !(x > 0)) { toast('Indique el monto del abono'); return; }
+    if (ab && x > P.monto + 0.005) { toast('El abono supera el total: ' + mon(P.monto, P.mon)); return; }
+    var c = Caja.de(P.cid), r = P.repId ? docDe(P.repId) : Caja.crearRep(c, Caja.sinRendir(c)); Caja.RP = null;
+    if (!r) return;
+    if (!P.repId) { Store.save(); UI.render(); toast('Reposición ' + r.numero + ' creada en Cuentas por pagar'); }
+    if (ab) Pag.abrir(r.id, x); else if (P.repId) Pag.abrir(r.id); else Caja.rendicion(r.id);
   },
   crearRep: function (c, g) {
     var gas = r2(g.reduce(function (a, d) { return a + Caja.consumo(d, c); }, 0));
-    /* cuenta bancaria: se repone lo que falta para volver al fondo a la tasa de hoy (gastos + ajuste del fondo) */
+    /* fondo en divisa: se repone lo que falta para volver a su valor a la tasa de hoy (gastos + ajuste del fondo) */
     var tot = Caja.aReponer(c); if (!(tot > 0)) return null;
     var banco = Caja.esBanco(c), saldo = Caja.disponible(c), pp = Caja.porPagar(c), tf = BCV.hoy[c.moneda] || 0;
     c.nRep = (+c.nRep || 0) + 1;
     var r = { id: 'rp' + c.id + '-' + c.nRep, tipo: 'reposicion', cajaId: c.id, provId: '', numero: c.codigo + '-R' + String(c.nRep).padStart(3, '0'), control: '', fecha: hoy(), vence: hoy(),
       moneda: Caja.monOp(c), tasa: Caja.monOp(c) === 'Bs' ? 1 : tf, total: tot, base: 0, alic: 0, iva: 0, exento: 0, pedido: c.pedido || '', et: c.et || '', obs: 'Reposición de ' + g.length + ' gasto(s) de caja chica · custodio ' + c.responsable, gastos: g.map(function (d) { return d.id; }), pagos: [], creado: new Date().toISOString(), por: yo() };
-    if (banco) { r.fondoBs = Caja.fondoATasa(c, BCV.hoy); r.saldoBs = saldo; r.porPagarBs = pp; r.ajusteFondo = r2(tot - gas); if (c.moneda !== 'Bs') r.tasaFondo = tf; }
+    if (banco && c.moneda !== 'Bs') { r.fondoBs = Caja.fondoATasa(c, BCV.hoy); r.saldoBs = saldo; r.porPagarBs = pp; r.ajusteFondo = r2(tot - gas); r.tasaFondo = tf; }
     g.forEach(function (d) { d.repId = r.id; });
     DB.documentos.push(r); Store.save(); return r;
   },
   /* rendición: detalle + asiento sugerido (gasto por categoría y centro de costo contra Bancos) */
   rendicion: function (rid) {
     var r = docDe(rid), c = Caja.de(r.cajaId), G = (r.gastos || []).map(docDe).filter(Boolean), mo = Caja.monOp(c);
-    var filas = G.map(function (d) { var pt = Caja.partes(d, c); return '<tr><td class="center">' + fdmy(d.fecha) + '</td><td>' + TIPOS[d.tipo] + ' ' + esc(d.numero) + ((d.soportes || []).length ? ' ' + Caja.lnkSoportes(d) : '') + '</td><td>' + esc(nomDoc(d)) + '</td><td>' + esc(d.concepto) + '</td><td>' + esc(d.categoria) + '</td><td class="mono">' + esc(d.pedido || 'ADM') + '</td><td class="num">' + mon(d.total, d.moneda) + '</td><td class="num">' + (Calc.retDoc(d) ? '−' + fmt(Calc.retDoc(d)) : '—') + '</td><td class="num">' + (pt.com ? fmt(pt.com) : '—') + '</td><td class="num"><b>' + mon(r2(pt.neto + pt.com), mo) + '</b></td></tr>'; }).join('');
+    var filas = G.map(function (d) { var pt = Caja.partes(d, c); return '<tr><td class="center">' + fdmy(d.fecha) + '</td><td>' + TIPOS[d.tipo] + ' ' + esc(d.numero) + ' ' + Caja.lnkSoportes(d, r.id) + '</td><td>' + esc(nomDoc(d)) + '</td><td>' + esc(d.concepto) + '</td><td>' + esc(d.categoria) + '</td><td class="mono">' + esc(d.pedido || 'ADM') + '</td><td class="num">' + mon(d.total, d.moneda) + '</td><td class="num">' + (Calc.retDoc(d) ? '−' + fmt(Calc.retDoc(d)) : '—') + '</td><td class="num">' + (pt.com ? fmt(pt.com) : '—') + '</td><td class="num"><b>' + mon(r2(pt.neto + pt.com), mo) + '</b></td></tr>'; }).join('');
     var A = Caja.asiento(G, c, r);
     var asiento = Object.keys(A).sort().map(function (k) { var x = k.split('|'), v = A[k]; return '<tr><td>' + esc(x[0]) + (Caja.esCtaFondo(x[0]) ? '' : ' – ' + esc(x[1] ? 'Pedido ' + x[1] : 'Administración')) + '</td>' + (v < 0 ? '<td></td><td class="num">' + mon(-v, mo) + '</td>' : '<td class="num">' + mon(v, mo) + '</td><td></td>') + '</tr>'; }).join('');
     var totAs = r2(Object.keys(A).reduce(function (a, k) { return a + Math.max(0, A[k]); }, 0));
@@ -2750,17 +2792,18 @@ var Caja = {
   },
   /* soportes del gasto (PDF o imágenes), también en gastos ya cargados o repuestos.
      En Dropbox: /CxP/Gastos/<mes del gasto>/<proveedor>/<documento>/ */
-  lnkSoportes: function (d) { var n = (d.soportes || []).length; return '<span class="cx-lnk' + (n ? '' : ' cx-mut') + '" title="Soportes del gasto" onclick="Caja.soportes(\'' + d.id + '\')">📎' + (n ? ' ' + n : '') + '</span>'; },
-  soportes: function (id) {
+  lnkSoportes: function (d, rep) { var n = (d.soportes || []).length; return '<span class="cx-lnk' + (n ? '' : ' cx-mut') + '" title="Soportes del gasto" onclick="Caja.soportes(\'' + d.id + '\',\'' + (rep || '') + '\')">📎' + (n ? ' ' + n : '') + '</span>'; },
+  soportes: function (id, rep) {
+    if (rep !== undefined) Caja.spRep = rep;
     var d = docDe(id), ed = Rol.ed('caja'), quita = ed && (!Caja.repuesto(d) || Rol.esAdmin());
     var filas = (d.soportes || []).map(function (s) {
-      return '<tr><td>' + (s.path ? '<span class="cx-lnk" onclick="Nube.verComp(\'' + jsq(s.path) + '\')">📎 ' + esc(s.nombre) + '</span>' : '📎 ' + esc(s.nombre)) + '</td><td class="center">' + fdmy((s.creado || '').slice(0, 10)) + '</td><td>' + esc(s.por || '') + '</td>' +
+      return '<tr><td>' + (s.path ? '<span class="cx-lnk" onclick="Nube.verComp(\'' + jsq(s.path) + '\',\'' + jsq(s.nombre) + '\')">📎 ' + esc(s.nombre) + '</span>' : '📎 ' + esc(s.nombre)) + '</td><td class="center">' + fdmy((s.creado || '').slice(0, 10)) + '</td><td>' + esc(s.por || '') + '</td>' +
         '<td class="center">' + (quita ? '<span class="cx-lnk cx-rojo" title="Quitar" onclick="Caja.quitarSoporte(\'' + id + '\',\'' + s.id + '\')">🗑</span>' : '') + '</td></tr>'; }).join('');
     Caja.spId = id;
     UI.modal('Soportes · ' + TIPOS[d.tipo] + ' ' + d.numero + ' · ' + nomDoc(d),
       '<div class="info-pedido cx-chips"><span>Fecha <b>' + fdmy(d.fecha) + '</b></span><span>Total <b>' + mon(d.total, d.moneda) + '</b></span>' + (d.concepto ? '<span>Concepto <b>' + esc(d.concepto) + '</b></span>' : '') + '</div>' +
       '<table class="itemtbl" id="tSoportes"><thead><tr><th>Archivo</th><th class="center" style="width:90px">Cargado</th><th>Por</th><th style="width:40px"></th></tr></thead><tbody>' + (filas || '<tr><td colspan="4" class="empty">Este gasto aún no tiene soportes</td></tr>') + '</tbody></table>' +
-      '<div class="cxf">' + Fm.acc((ed ? '<label class="btn g cx-filebtn" id="spBtn">📎 Agregar PDF o imágenes<input type="file" accept=".pdf,.jpg,.jpeg,.png" multiple style="display:none" onchange="Caja.subirSoportes(\'' + id + '\',this)"></label>' : '') + '<button class="btn gr" onclick="UI.cerrarModal()">Cerrar</button>') + '</div>');
+      '<div class="cxf">' + Fm.acc((ed ? '<label class="btn g cx-filebtn" id="spBtn">📎 Agregar PDF o imágenes<input type="file" accept=".pdf,.jpg,.jpeg,.png" multiple style="display:none" onchange="Caja.subirSoportes(\'' + id + '\',this)"></label>' : '') + (Caja.spRep ? '<button class="btn o" id="spVolver" onclick="Caja.spId=\'\';Caja.rendicion(\'' + Caja.spRep + '\')">← Volver a la rendición</button>' : '') + '<button class="btn gr" onclick="UI.cerrarModal()">Cerrar</button>') + '</div>');
   },
   subirSoportes: function (id, inp) {
     var T = [].slice.call(inp.files || []), F = T.filter(function (f) { return /\.(pdf|jpe?g|png)$/i.test(f.name); }), mal = T.length - F.length, err = [], d0 = docDe(id); inp.value = '';
@@ -3512,9 +3555,30 @@ var Nube = {
       });
     });
   },
-  verComp: function (path) {
-    var w = window.open('about:blank', '_blank');
-    Nube.fn({ accion: 'ver', path: path }).then(function (d) { if (w) w.location = d.link; else location.href = d.link; }).catch(function (e) { if (w) w.close(); toast(e.message); });
+  /* Visor en pantalla, como los informes de Seguimiento. Dropbox entrega el archivo como descarga:
+     se baja a memoria y se muestra desde blob:, con su tipo. */
+  verComp: function (path, nombre) {
+    Nube.fn({ accion: 'ver', path: path }).then(function (d) { Nube.visor(d.link, path, nombre || path.split('/').pop()); }).catch(function (e) { toast(e.message); });
+  },
+  visor: function (url, path, nombre) {
+    var ov = $('cxVisorOv'); if (ov) ov.remove();
+    var ext = (/\.([a-z]+)$/i.exec(path) || [0, ''])[1].toLowerCase(), pdf = ext === 'pdf', mime = pdf ? 'application/pdf' : ext === 'png' ? 'image/png' : 'image/jpeg';
+    ov = document.createElement('div'); ov.id = 'cxVisorOv'; ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-label', 'Comprobante');
+    ov.innerHTML = '<div class="pp-box"><div class="pp-bar"><div class="pp-t" title="' + esc(nombre) + '">' + esc(nombre) + '</div><a class="pp-a" href="' + esc(url) + '" rel="noopener">Descargar</a><button type="button" class="pp-x" aria-label="Cerrar">×</button></div><div class="pp-cargando">Cargando…</div></div>';
+    document.body.appendChild(ov);
+    var blobUrl = null, vivo = true;
+    var cerrar = function () { vivo = false; ov.remove(); document.removeEventListener('keydown', tecla, true); if (blobUrl) setTimeout(function () { URL.revokeObjectURL(blobUrl); }, 1000); };
+    var tecla = function (e) { if (e.key === 'Escape') { e.stopImmediatePropagation(); cerrar(); } };
+    ov.querySelector('.pp-x').onclick = cerrar; ov.addEventListener('click', function (e) { if (e.target === ov) cerrar(); }); document.addEventListener('keydown', tecla, true);
+    fetch(url).then(function (r) { if (!r.ok) throw Error('Dropbox respondió ' + r.status); return r.arrayBuffer(); }).then(function (buf) {
+      if (!vivo) return;
+      blobUrl = URL.createObjectURL(new Blob([buf], { type: mime }));
+      var el;
+      if (pdf) { el = document.createElement('iframe'); el.title = nombre; el.src = blobUrl; }
+      else { el = document.createElement('div'); el.className = 'pp-img'; var im = document.createElement('img'); im.alt = nombre; im.src = blobUrl; el.appendChild(im); }
+      ov.querySelector('.pp-cargando').replaceWith(el);
+      var a = ov.querySelector('.pp-a'); a.href = blobUrl; a.setAttribute('download', nombre);
+    }).catch(function (e) { var c = ov.querySelector('.pp-cargando'); if (c) c.innerHTML = 'No se pudo mostrar el archivo (' + esc(e.message || e) + ').<br><a href="' + esc(url) + '" rel="noopener">Descargarlo</a>'; });
   },
 
   /* ---------- entrada ---------- */
