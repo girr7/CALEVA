@@ -874,6 +874,9 @@ tr.cx-anul td{color:#98a6b8;text-decoration:line-through}
 #cxVisorOv .pp-img img{max-width:100%;height:auto;background:#fff}
 #cxVisorOv .pp-cargando{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:#5b6b7d;text-align:center;padding:20px}
 @media (max-width:768px){#cxVisorOv{padding:0}#cxVisorOv .pp-box{width:100vw;height:100vh;border-radius:0}}
+.cxf .cx-radios{display:flex;flex-wrap:wrap;gap:18px;min-height:32px;align-items:center}
+.cxf .cx-radios label{white-space:nowrap;display:inline-flex;align-items:center;gap:6px;margin:0}
+.cxf .cx-radios input[type=radio]{width:16px;height:16px;min-width:16px;padding:0;margin:0;flex:none;box-shadow:none}
 </style>
 </head>
 <body>
@@ -1030,6 +1033,7 @@ var CFG0 = {
                          /* unidad tributaria (Bs): sustraendo PN = UT × 83,3334 × % */
   corr: { iva: 1663, islr: 453 }, /* ÚLTIMO número emitido de cada tipo */
   alicuota: 16, pctIvaDefecto: 75,
+  categAdmin: ['Alquiler y condominio', 'Servicios (luz, agua, internet, teléfono)', 'Honorarios profesionales', 'Impuestos y tasas', 'Seguros', 'Mantenimiento de oficina', 'Otros administrativos'],
   ivaAgenteHasta: '2026-10-31'   /* último día como agente de retención de IVA (SENIAT: ordinario desde 01/11/2026); vacío = sigue siendo agente */
 };
 
@@ -1045,6 +1049,7 @@ function fdmy(iso) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || ''); return 
 function sumaDias(iso, n) { var d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + (+n || 0)); return d.toISOString().slice(0, 10); }
 function dias(iso) { if (!iso) return null; return Math.round((new Date(iso + 'T12:00:00') - new Date(hoy() + 'T12:00:00')) / 86400000); }
 function uid(p) { return (p || 'x') + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+function sinNumero(s) { return /^(s[\s\/.\-]*n\.?|sin n.*|n[\s\/.\-]*a\.?|0+|-+|)$/.test(clave(s)); }
 function clave(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim(); }
 function toast(msg) { var t = $('toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(toast._t); toast._t = setTimeout(function () { t.classList.remove('on'); }, 2800); }
 function yo() { return Store.cloud() ? (Auth.email() || 'usuario') : 'local'; }
@@ -1444,8 +1449,11 @@ var Prov = {
 
 /* ═══════════════ DOCUMENTOS POR PAGAR ═══════════════ */
 var Docs = {
-  f: { q: '', prov: '', tipo: '', est: 'abiertos', mon: '', desde: '', hasta: '', ped: '' }, F: null,
+  f: { q: '', prov: '', tipo: '', est: 'abiertos', mon: '', desde: '', hasta: '', ped: '', dest: '' }, F: null,
   filtrarProv: function (id) { this.f.prov = id; this.f.est = ''; UI.tab('docs'); },
+  /* a qué se imputa: categoría administrativa, pedido, o aún sin clasificar */
+  destino: function (d) { return d.categoria ? 'adm' : d.pedido ? 'obra' : 'sin'; },
+  txtDestino: function (d) { return d.categoria ? 'Administración · ' + d.categoria : d.pedido ? 'Pedido ' + d.pedido : ''; },
   lista: function () {
     var f = this.f, q = clave(f.q);
     return DB.documentos.filter(function (d) {
@@ -1454,13 +1462,14 @@ var Docs = {
       if (f.prov && d.provId !== f.prov) return false;
       if (f.tipo && d.tipo !== f.tipo) return false;
       if (f.ped && String(d.pedido || '') !== f.ped) return false;
+      if (f.dest && (f.dest.indexOf('cat:') === 0 ? d.categoria !== f.dest.slice(4) : Docs.destino(d) !== f.dest)) return false;
       if (f.mon && d.moneda !== f.mon) return false;
       if (f.est === 'abiertos' && (e === 'Pagado' || e === 'Anulado')) return false;
       if (f.est === 'vencidos' && !Calc.vencido(d)) return false;
       if (f.est && f.est !== 'abiertos' && f.est !== 'vencidos' && e !== f.est) return false;
       if (f.desde && (d.fecha || '') < f.desde) return false;
       if (f.hasta && (d.fecha || '') > f.hasta) return false;
-      if (q && clave([p.razon, p.rif, d.numero, d.control, d.obs, d.pedido, d.et, TIPOS[d.tipo]].join(' ')).indexOf(q) < 0) return false;
+      if (q && clave([p.razon, p.rif, d.numero, d.control, d.obs, d.pedido, d.et, d.categoria, TIPOS[d.tipo]].join(' ')).indexOf(q) < 0) return false;
       return true;
     }).sort(function (a, b) { return (a.vence || '9').localeCompare(b.vence || '9') || (b.fecha || '').localeCompare(a.fecha || ''); });
   },
@@ -1491,7 +1500,7 @@ var Docs = {
         else if (Rol.paga()) acc += ' <span class="cx-lnk cx-pag" title="Registrar pago" onclick="Pag.abrir(\'' + d.id + '\')">💵 Pagar</span>';
       }
       if (Rol.ed('docs') && e !== 'Anulado') acc += ' <span class="cx-lnk" title="Editar" onclick="Docs.editar(\'' + d.id + '\')">✎</span>';
-      return '<tr' + (ven ? ' class="cx-venc"' : '') + '><td class="center">' + fdmy(d.fecha) + '</td><td>' + TIPOS[d.tipo] + '</td><td class="mono">' + esc(d.numero) + '</td><td><b>' + esc(nomDoc(d)) + '</b></td>' +
+      return '<tr' + (ven ? ' class="cx-venc"' : '') + '><td class="center">' + fdmy(d.fecha) + '</td><td>' + TIPOS[d.tipo] + '</td><td class="mono">' + esc(d.numero) + '</td><td><b>' + esc(nomDoc(d)) + '</b>' + (d.categoria ? '<div class="cx-mut" style="font-size:11px">' + esc(Docs.txtDestino(d)) + '</div>' : '') + '</td>' +
         '<td class="center">' + (d.vence ? fdmy(d.vence) + (e !== 'Pagado' && e !== 'Anulado' && dv != null ? '<div class="cx-dias' + (dv < 0 ? ' cx-rojo' : dv <= 7 ? ' cx-nar' : '') + '">' + (dv < 0 ? 'vencido ' + (-dv) + ' d' : dv === 0 ? 'vence hoy' : 'en ' + dv + ' d') + '</div>' : '') : '—') + '</td>' +
         '<td class="center">' + d.moneda + '</td>' + (d.tipo === 'factura' ? '<td class="num">' + fmt(d.base) + '</td><td class="num">' + fmt(d.iva) + '</td>' : '<td class="num cx-mut">—</td><td class="num cx-mut">—</td>') + '<td class="num"><b>' + fmt(d.total) + '</b></td><td class="num">' + (Calc.retDoc(d) ? '−' + fmt(Calc.retDoc(d)) : '<span class="cx-mut">—</span>') + '</td>' +
         '<td class="num">' + fmt(Calc.pagado(d)) + '</td><td class="num"><b>' + fmt(Math.max(0, Calc.saldo(d))) + '</b>' + (Calc.saldo(d) < -0.005 ? '<div class="cx-dias cx-rojo">pagado de más ' + fmt(-Calc.saldo(d)) + '</div>' : '') + '</td>' +
@@ -1502,6 +1511,7 @@ var Docs = {
       '<div class="toolbar cx-tb"><div class="cx-tbf"><input id="dcQ" placeholder="Buscar proveedor, N°, control, pedido…" style="width:230px" value="' + esc(f.q) + '" oninput="Docs.f.q=this.value;Docs.render();UI.refoco(\'dcQ\')">' +
       '<select style="max-width:210px" onchange="Docs.f.prov=this.value;Docs.render()">' + pOpt + '</select>' +
       '<select style="max-width:210px" onchange="Docs.f.ped=this.value;Docs.render()">' + Seg.optPedidos(f.ped, 'Todos los pedidos') + '</select>' +
+      sel('', 'dest', [['', 'Todo destino'], ['obra', 'Pedido / obra'], ['adm', 'Administración'], ['sin', 'Sin clasificar']].concat(Array.from(new Set((DB.config.categAdmin || []).concat(DB.documentos.map(function (d) { return Caja.esGasto(d) ? '' : d.categoria; }).filter(Boolean)))).map(function (c) { return ['cat:' + c, '· ' + c]; }))) +
       sel('', 'tipo', [['', 'Todos los tipos']].concat(Object.keys(TIPOS).map(function (k) { return [k, TIPOS[k]]; }))) +
       sel('', 'est', [['abiertos', 'Pendientes'], ['vencidos', 'Vencidos'], ['Pagado', 'Pagados'], ['Anulado', 'Anulados'], ['', 'Todos']]) +
       sel('', 'mon', [['', 'Toda moneda'], ['Bs', 'Bs'], ['USD', 'USD'], ['EUR', 'EUR']]) +
@@ -1526,7 +1536,7 @@ var Docs = {
       Fm.c(3, 'Tipo *', Fm.sel('dcTipo', TIPOS_CXP.map(function (k) { return [k, TIPOS[k]]; }), d.tipo, 'onchange="Docs.onTipo()"')) +
       Fm.c(9, 'Proveedor *', '<div class="cxin"><input id="dcProv" list="dcProvDL" placeholder="Escriba razón social o RIF" value="' + esc(p ? Prov.etiqueta(p) : '') + '" onchange="Docs.onProv()">' +
         '<button type="button" class="btn gr" title="Crear un proveedor nuevo sin salir del documento" onclick="Docs.crearProv()">＋ Nuevo</button></div>', '', '', 'dcProvInfo') +
-      Fm.c(3, 'N° documento *', Fm.t('dcNum', d.numero)) +
+      Fm.c(3, 'N° documento *', Fm.t('dcNum', d.numero, 'placeholder="S/N si no tiene"')) +
       Fm.c(3, 'N° control *', Fm.t('dcCtrl', d.control), '', 'cx-fact') +
       Fm.c(3, 'Fecha *', '<input id="dcFecha" type="date" value="' + d.fecha + '" onchange="Docs.onFecha()">') +
       Fm.c(3, 'Vence', '<input id="dcVence" type="date" value="' + (d.vence || '') + '" onchange="Docs.F.venceMano=true">', 'Fecha + plazo del proveedor', '', 'dcVenceInfo') +
@@ -1539,19 +1549,26 @@ var Docs = {
       Fm.c(2, 'IVA', Fm.n('dcIva', d.iva, 2, 'oninput="Docs.F.ivaMano=true;Docs.calc(true)"'), 'Calculado; editable', 'cx-fact') +
       Fm.c(2, 'Exento', Fm.n('dcExe', +d.exento || '', 2, 'oninput="Docs.calc()"'), 'Sin derecho a crédito', 'cx-fact') +
       Fm.c(3, 'Total del documento *', Fm.n('dcTotal', d.total, 2, 'class="n cx-fuerte"'), '', '', 'dcTotInfo') +
-      Fm.sec('Imputación (opcional)') +
-      Fm.c(6, 'Pedido activo (Seguimiento)', '<select id="dcPed" onchange="Docs.onPed()">' + Seg.optPedidos(d.pedido, '', true) + '</select>') +
-      Fm.c(6, 'ET', '<select id="dcEt">' + Seg.optET(d.pedido, d.et) + '</select>', '', '', 'dcEtInfo') +
+      Fm.sec('Imputación') +
+      Fm.c(12, 'Destino', '<div class="cx-radios"><label class="cx-chk"><input type="radio" name="dcDest" value="obra"' + (d.categoria ? '' : ' checked') + ' onchange="Docs.onDest()"> Pedido / obra</label><label class="cx-chk"><input type="radio" name="dcDest" value="adm"' + (d.categoria ? ' checked' : '') + ' onchange="Docs.onDest()"> Administración</label></div>') +
+      Fm.c(6, 'Pedido activo (Seguimiento)', '<select id="dcPed" onchange="Docs.onPed()">' + Seg.optPedidos(d.pedido, '', true) + '</select>', '', 'cx-dobra') +
+      Fm.c(6, 'ET', '<select id="dcEt">' + Seg.optET(d.pedido, d.et) + '</select>', '', 'cx-dobra', 'dcEtInfo') +
+      Fm.c(6, 'Categoría *', '<select id="dcCat"><option value="">— elija —</option>' + (DB.config.categAdmin || []).concat(d.categoria && (DB.config.categAdmin || []).indexOf(d.categoria) < 0 ? [d.categoria] : []).map(function (c) { return '<option value="' + esc(c) + '"' + (c === d.categoria ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('') + '</select>', '', 'cx-dadm') +
       Fm.c(12, 'Observaciones', '<textarea id="dcObs" rows="2">' + esc(d.obs) + '</textarea>') +
       Fm.acc('<button class="btn g" onclick="Docs.guardar()">' + (id ? 'Guardar cambios' : 'Registrar documento') + '</button>' +
         (id && Rol.esAdmin() ? '<button class="btn r" onclick="Docs.anular(\'' + id + '\')">Anular documento</button>' : '') + '<button class="btn gr" onclick="UI.cerrarModal()">Cancelar</button>') + '</div>');
-    this.onTipo(true); this.onProv(true); if (!id) this.onFecha(); else this.calc();
+    this.onTipo(true); this.onProv(true); this.onDest(); if (!id) this.onFecha(); else this.calc();
   },
   crearProv: function () {
     Prov.editar(null, function (p) {
       $('dcProvDL').insertAdjacentHTML('beforeend', '<option value="' + esc(Prov.etiqueta(p)) + '">');
       $('dcProv').value = Prov.etiqueta(p); if ($('ccImp')) Caja.onProv(); else Docs.onProv();
     }, $('dcProv').value);
+  },
+  onDest: function () {
+    var adm = document.querySelector('input[name=dcDest]:checked').value === 'adm';
+    [].forEach.call(document.querySelectorAll('#modalBody .cx-dobra'), function (e) { e.style.display = adm ? 'none' : ''; });
+    [].forEach.call(document.querySelectorAll('#modalBody .cx-dadm'), function (e) { e.style.display = adm ? '' : 'none'; });
   },
   onPed: function () {
     var p = $('dcPed').value, cur = $('dcEt').value, n = (Seg.d.et[p] || []).length;
@@ -1596,7 +1613,12 @@ var Docs = {
     var d = { tipo: tipo, provId: p.id, numero: $('dcNum').value.trim(), control: fa ? $('dcCtrl').value.trim() : '', fecha: $('dcFecha').value, vence: $('dcVence').value, moneda: m,
       tasa: m === 'Bs' ? 1 : Num.get('dcTasa'), total: r2(Num.get('dcTotal')), base: fa ? r2(Num.get('dcBase')) : 0, alic: fa ? +$('dcAlic').value : 0, iva: fa ? r2(Num.get('dcIva')) : 0,
       exento: fa ? r2(Num.get('dcExe')) : 0, pedido: $('dcPed').value, et: $('dcEt').value, obs: $('dcObs').value.trim() };
-    if (!d.numero) { toast('Indique el número'); return; }
+    if (document.querySelector('input[name=dcDest]:checked').value === 'adm') {
+      d.categoria = $('dcCat').value; d.pedido = ''; d.et = '';
+      if (!d.categoria) { toast('Elija la categoría del gasto administrativo'); return; }
+    } else d.categoria = '';
+    if (!d.numero && fa) { toast('Indique el número de la factura'); return; }
+    if (!d.numero) d.numero = 'S/N';
     if (fa && !d.control) { toast('Indique el N° de control de la factura'); return; }
     if (!d.fecha) { toast('Indique la fecha'); return; }
     if (!(d.total > 0)) { toast('Indique el total'); return; }
@@ -1612,8 +1634,9 @@ var Docs = {
     var yaPagado = r2(pagos.reduce(function (a, x) { return a + (+x.montoDoc || 0); }, 0));
     if (yaPagado > d.total + 0.005 && !confirm('Lo ya pagado (' + mon(yaPagado, d.moneda) + ') supera el total del documento (' + mon(d.total, d.moneda) + '). ¿Guardar igual?')) return;
     if (ant) d.pagos = pagos;
-    var dup = DB.documentos.find(function (x) { return x.id !== id && x.provId === d.provId && x.tipo === d.tipo && clave(x.numero) === clave(d.numero) && !x.anulado; });
-    if (dup) { toast('Ya existe ' + TIPOS[d.tipo].toLowerCase() + ' ' + d.numero + ' de este proveedor'); return; }
+    /* sin límite por proveedor ni por día: «S/N» nunca es repetido; el mismo número real solo avisa */
+    var dup = sinNumero(d.numero) ? null : DB.documentos.find(function (x) { return x.id !== id && x.provId === d.provId && x.tipo === d.tipo && clave(x.numero) === clave(d.numero) && !x.anulado; });
+    if (dup && !confirm('Ya existe ' + TIPOS[d.tipo].toLowerCase() + ' ' + d.numero + ' de este proveedor, del ' + fdmy(dup.fecha) + ' por ' + mon(dup.total, dup.moneda) + '.\n\n¿Registrarlo igual?')) return;
     if (id) Object.assign(docDe(id), d, { mod: new Date().toISOString(), modPor: yo() });
     else DB.documentos.push(Object.assign({ id: uid('dc'), pagos: [], creado: new Date().toISOString(), por: yo() }, d));
     Store.save(); UI.cerrarModal(); UI.render(); toast(id ? 'Documento actualizado' : 'Documento registrado');
@@ -1639,7 +1662,7 @@ var Docs = {
       (Calc.ivaNoAplica(d) || Calc.islrNoAplica(d) ? '<div class="hint">' + (Calc.ivaNoAplica(d) ? 'IVA: no aplica (' + esc(Calc.ivaNoAplica(d)) + '). ' : '') + (Calc.islrNoAplica(d) ? 'ISLR: no aplica (' + esc(Calc.islrNoAplica(d)) + ').' : '') + '</div>' : '') +
       (rr ? '<h4 class="cx-h4">Retenciones</h4><table class="itemtbl"><thead><tr><th>Tipo</th><th>N°</th><th class="center">Fecha</th><th class="num">Monto</th><th>Estado</th><th></th></tr></thead><tbody>' + rr + '</tbody></table>' : '') +
       (pp ? '<h4 class="cx-h4">Pagos</h4><table class="itemtbl"><thead><tr><th class="center">Fecha</th><th>Forma</th><th class="num">Monto</th><th class="num">Equiv. ' + d.moneda + '</th><th>Referencia</th><th>Comprobante</th></tr></thead><tbody>' + pp + '</tbody></table>' : '') +
-      ((d.pedido || d.et) ? '<div class="hint">Pedido <b>' + esc(Seg.etiqueta(d.pedido) || '—') + '</b> · ET <b>' + esc(d.et || '—') + '</b></div>' : '') + (d.obs ? '<div class="hint"><b>Obs.:</b> ' + esc(d.obs) + '</div>' : '') +
+      (d.categoria && !Caja.esGasto(d) ? '<div class="hint">Destino <b>' + esc(Docs.txtDestino(d)) + '</b></div>' : '') + ((d.pedido || d.et) ? '<div class="hint">Pedido <b>' + esc(Seg.etiqueta(d.pedido) || '—') + '</b> · ET <b>' + esc(d.et || '—') + '</b></div>' : '') + (d.obs ? '<div class="hint"><b>Obs.:</b> ' + esc(d.obs) + '</div>' : '') +
       (d.anulado ? '<div class="hint cx-rojo">Anulado: ' + esc(d.motivoAnul) + '</div>' : '') +
       (Caja.esGasto(d) ? '<div class="hint">Gasto de caja chica <b>' + esc((Caja.de(d.cajaId) || {}).nombre || '') + '</b> · ' + esc(d.categoria || '') + ' · ' + esc(d.concepto || '') + ' · estado <b>' + Caja.estadoGasto(d) + '</b></div>' : '') +
       (d.tipo === 'reposicion' ? '<div class="frow" style="margin-top:10px"><button class="btn o" onclick="Caja.rendicion(\'' + d.id + '\')">📋 Ver rendición</button></div>' : '') +
@@ -1975,6 +1998,14 @@ var Resumen = {
     var filas = Object.keys(P).sort(function (a, b) { return P[b].t - P[a].t; }).map(function (k) { var o = P[k];
       return '<tr><td>' + (/^caja:/.test(k) ? '<span class="cx-lnk" onclick="Caja.sel=\'' + k.slice(5) + '\';UI.tab(\'caja\')"><b>' + esc(o.nom) + '</b></span>' : '<span class="cx-lnk" onclick="Docs.filtrarProv(\'' + k + '\')"><b>' + esc(o.nom) + '</b></span>') + '</td><td class="center">' + o.n + '</td>' + o.b.map(function (v, i) { return '<td class="num' + (i && v > 0.005 ? ' cx-rojo' : '') + '">' + (v > 0.005 ? fmt(v) : '<span class="cx-mut">—</span>') + '</td>'; }).join('') + '<td class="num"><b>' + fmt(o.t) + '</b></td></tr>'; }).join('');
     var tb = [0, 0, 0, 0, 0]; Object.keys(P).forEach(function (k) { P[k].b.forEach(function (v, i) { tb[i] += v; }); });
+    /* por destino: mismos totales que los indicadores «Por pagar» y «Pagado en el mes» */
+    var D = {}, grupo = function (d) { return d.tipo === 'reposicion' ? 'Caja chica (reposiciones)' : d.categoria ? 'adm|' + d.categoria : d.pedido ? 'Pedido / obra' : 'Sin clasificar'; }, fd = function (k) { return D[k] = D[k] || { pp: 0, pag: 0 }; };
+    A.forEach(function (d) { fd(grupo(d)).pp += u(d); });
+    DB.documentos.forEach(function (d) { (d.pagos || []).forEach(function (x) { if (x.fecha.slice(0, 7) === mes) fd(grupo(d)).pag += conv(x.monto, x.moneda, 'USD', x.tasas || BCV.hoy); }); });
+    var filaD = function (t, o, cl) { return '<tr' + (cl ? ' class="' + cl + '"' : '') + '><td>' + t + '</td><td class="num">' + fmt(o.pp) + '</td><td class="num">' + fmt(o.pag) + '</td></tr>'; };
+    var kAdm = Object.keys(D).filter(function (k) { return k.indexOf('adm|') === 0; }).sort(), totAdm = kAdm.reduce(function (a, k) { a.pp += D[k].pp; a.pag += D[k].pag; return a; }, { pp: 0, pag: 0 });
+    var filasD = ['Pedido / obra', 'Caja chica (reposiciones)', 'Sin clasificar'].filter(function (k) { return D[k]; }).map(function (k) { return filaD(esc(k), D[k]); }).join('') +
+      (kAdm.length ? filaD('<b>Administración</b>', totAdm) + kAdm.map(function (k) { return filaD('<span style="padding-left:14px">' + esc(k.slice(4)) + '</span>', D[k]); }).join('') : '');
     $('tab-resumen').innerHTML = '<div class="kpis">' +
       kpi('navy', 'Por pagar (equiv. US$)', '$' + fmt(sum(A)), A.length + ' documento(s) · ' + (Object.keys(porMon).map(function (m) { return mon(porMon[m], m); }).join(' · ') || '—')) +
       kpi('red', 'Vencido', '$' + fmt(sum(ven)), ven.length + ' documento(s)') + kpi('orange', 'Vence en 7 días', '$' + fmt(sum(pv)), pv.length + ' documento(s)') +
@@ -1982,7 +2013,9 @@ var Resumen = {
       kpi('blue', 'Retenido ' + mes, 'Bs ' + fmt(rI + rS), 'IVA Bs ' + fmt(rI) + ' · ISLR Bs ' + fmt(rS)) + '</div>' +
       '<div class="card"><div class="section-hdr">Saldo por proveedor y antigüedad<span class="section-hdr-right">equivalente US$ a la tasa BCV de hoy (' + fmt(BCV.hoy.USD, 4) + ')</span></div><div class="section-body"><div style="overflow-x:auto"><table id="tRes"><thead><tr><th>Proveedor</th><th class="center" style="width:60px">Docs</th><th class="num">Por vencer</th><th class="num">1–30 d</th><th class="num">31–60 d</th><th class="num">61–90 d</th><th class="num">+90 d</th><th class="num">Total</th></tr></thead><tbody>' +
       (filas || '<tr><td colspan="8" class="empty">Sin cuentas por pagar abiertas</td></tr>') + (filas ? '<tr class="tfoot-row"><td colspan="2" style="text-align:right;font-weight:700">TOTAL</td>' + tb.map(function (v) { return '<td class="num"><b>' + fmt(v) + '</b></td>'; }).join('') + '<td class="num"><b>' + fmt(sum(A)) + '</b></td></tr>' : '') +
-      '</tbody></table></div></div></div>';
+      '</tbody></table></div></div></div>' +
+      '<div class="card"><div class="section-hdr">Por destino<span class="section-hdr-right">equivalente US$ · pagado en ' + mes + '</span></div><div class="section-body"><div style="overflow-x:auto"><table id="tDest"><thead><tr><th>Destino</th><th class="num">Por pagar</th><th class="num">Pagado en el mes</th></tr></thead><tbody>' +
+      (filasD ? filasD + filaD('<b>TOTAL</b>', { pp: sum(A), pag: pagMes }, 'tfoot-row') : '<tr><td colspan="3" class="empty">Sin movimientos</td></tr>') + '</tbody></table></div></div></div>';
   }
 };
 
@@ -2003,6 +2036,7 @@ var Conf = {
       Fm.c(3, 'Último día como agente de IVA', '<input id="cfIvaH" type="date" value="' + esc(c.ivaAgenteHasta || '') + '" ' + ad + '>', 'Pasada esta fecha, ninguna factura pendiente lleva IVA. Vacío = sigue siendo agente') +
       Fm.c(3, 'Caja chica sin retención IVA hasta (U.T.)', Fm.n('cfCUT', c.cajaUT, 0, ad), 'Hoy: Bs ' + fmt((+c.ut || 0) * (+c.cajaUT || 0)) + ' · Prov. SNAT/2015/0049') +
       Fm.c(3, '% IVA por defecto', Fm.sel('cfPI', [['75', '75%'], ['100', '100%']], String(c.pctIvaDefecto), ad)) +
+      Fm.c(12, 'Categorías de gastos administrativos', '<textarea id="cfCats" rows="4" ' + ad + '>' + esc((c.categAdmin || []).join('\n')) + '</textarea>', 'Una por línea. Quitar una no cambia los documentos que ya la usan') +
       Fm.c(3, 'Firma y sello', '<div class="cx-firmabox"><img src="' + Imp.firma() + '" alt="Firma y sello"></div>') +
       (Rol.esAdmin() ? Fm.acc('<button class="btn g" onclick="Conf.guardar()">Guardar configuración</button>') : '') + '</div></div></div>' +
       (Rol.esAdmin() ? Usr.html() : '') + (Store.cloud() ? '' :
@@ -2016,6 +2050,9 @@ var Conf = {
     a.nombre = $('cfNom').value.trim(); a.rif = $('cfRif').value.trim(); a.rifFmt = $('cfRifF').value.trim(); a.tel = $('cfTel').value.trim(); a.ciudadIva = $('cfCI').value.trim(); a.ciudadIslr = $('cfCS').value.trim();
     a.dirIva = [$('cfDI0').value, $('cfDI1').value, $('cfDI2').value]; a.dirIslr = [$('cfDS0').value, $('cfDS1').value];
     c.ut = r2(Num.get('cfUT')); c.cajaUT = Math.round(Num.get('cfCUT')); c.pctIvaDefecto = +$('cfPI').value; c.ivaAgenteHasta = $('cfIvaH').value;
+    var cats = Array.from(new Set($('cfCats').value.split('\n').map(function (x) { return x.replace(/["<>]/g, '').trim(); }).filter(Boolean)));
+    if (!cats.length) { toast('Deje al menos una categoría administrativa'); return; }
+    c.categAdmin = cats;
     var ci = parseInt(String($('cfCI2').value).replace(/\D/g, ''), 10), cs = parseInt(String($('cfCS2').value).replace(/\D/g, ''), 10);
     if (isNaN(ci) || isNaN(cs)) { toast('Correlativo inválido'); return; }
     var maxI = Math.max.apply(null, [0].concat(DB.retenciones.filter(function (r) { return r.tipo === 'iva'; }).map(function (r) { return r.seq; })));
@@ -2149,8 +2186,8 @@ var Imp = {
 var Xls = {
   bajar: function (nom, hojas, n) { saveFile(nom + '_' + hoy() + '.xlsx', Xlsx.build(hojas), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet').then(function (ok) { if (ok) toast(n + ' fila(s) exportada(s)'); }); },
   documentos: function () {
-    var L = Docs.lista(), h = ['FECHA', 'TIPO', 'NUMERO', 'N CONTROL', 'PROVEEDOR', 'RIF', 'VENCE', 'MONEDA', 'TASA', 'BASE', 'ALICUOTA', 'IVA', 'EXENTO', 'TOTAL', 'RETENCIONES', 'NETO', 'PAGADO', 'SALDO', 'ESTADO', 'PEDIDO', 'DESC. PEDIDO', 'ET', 'OBSERVACIONES'];
-    this.bajar('CxP_documentos', [{ name: 'CUENTAS POR PAGAR', headers: h, rows: L.map(function (d) { var p = provDe(d.provId) || {}; return [d.fecha, TIPOS[d.tipo], d.numero, d.control || '', p.razon || '', p.rif || '', d.vence || '', d.moneda, d.tasa, d.base, d.alic, d.iva, d.exento, d.total, Calc.retDoc(d), Calc.neto(d), Calc.pagado(d), Math.max(0, Calc.saldo(d)), Calc.estado(d) + (Calc.vencido(d) ? ' (VENCIDO)' : ''), d.pedido || '', Seg.desc(d.pedido), d.et || '', d.obs || '']; }) }], L.length);
+    var L = Docs.lista(), h = ['FECHA', 'TIPO', 'NUMERO', 'N CONTROL', 'PROVEEDOR', 'RIF', 'VENCE', 'MONEDA', 'TASA', 'BASE', 'ALICUOTA', 'IVA', 'EXENTO', 'TOTAL', 'RETENCIONES', 'NETO', 'PAGADO', 'SALDO', 'ESTADO', 'DESTINO', 'CATEGORIA', 'PEDIDO', 'DESC. PEDIDO', 'ET', 'OBSERVACIONES'];
+    this.bajar('CxP_documentos', [{ name: 'CUENTAS POR PAGAR', headers: h, rows: L.map(function (d) { var p = provDe(d.provId) || {}; return [d.fecha, TIPOS[d.tipo], d.numero, d.control || '', p.razon || '', p.rif || '', d.vence || '', d.moneda, d.tasa, d.base, d.alic, d.iva, d.exento, d.total, Calc.retDoc(d), Calc.neto(d), Calc.pagado(d), Math.max(0, Calc.saldo(d)), Calc.estado(d) + (Calc.vencido(d) ? ' (VENCIDO)' : ''), { adm: 'Administración', obra: 'Pedido / obra', sin: 'Sin clasificar' }[Docs.destino(d)], d.categoria || '', d.pedido || '', Seg.desc(d.pedido), d.et || '', d.obs || '']; }) }], L.length);
   },
   retenciones: function () {
     var L = Ret.lista(), h = ['TIPO', 'N COMPROBANTE', 'FECHA', 'PERIODO', 'PROVEEDOR', 'RIF', 'FACTURA', 'N CONTROL', 'FECHA FACTURA', 'TOTAL FACTURA Bs', 'BASE Bs', 'ALIC/% ', '% RET', 'SUSTRAENDO', 'RETENIDO Bs', 'CONCEPTO', 'ESTADO', 'MOTIVO ANULACION'];
@@ -2537,7 +2574,7 @@ var Caja = {
       Fm.c(3, 'Soporte *', Fm.sel('dcTipo', SOPORTES_CC, d.tipo, 'onchange="Caja.onTipo()"')) +
       Fm.c(9, 'Proveedor / beneficiario', '<div class="cxin"><input id="dcProv" list="dcProvDL" placeholder="Razón social o RIF (en facturas debe estar registrado)" value="' + esc(p ? Prov.etiqueta(p) : (d.provTexto || '')) + '" onchange="Caja.onProv()">' +
         '<button type="button" class="btn gr" onclick="Docs.crearProv()">＋ Nuevo</button></div>', '', '', 'dcProvInfo') +
-      Fm.c(3, 'N° soporte *', Fm.t('dcNum', d.numero)) + Fm.c(3, 'N° control *', Fm.t('dcCtrl', d.control), '', 'cx-fact') +
+      Fm.c(3, 'N° soporte *', Fm.t('dcNum', d.numero, 'placeholder="S/N si no tiene"')) + Fm.c(3, 'N° control *', Fm.t('dcCtrl', d.control), '', 'cx-fact') +
       Fm.c(3, 'Fecha *', '<input id="dcFecha" type="date" value="' + d.fecha + '" onchange="Caja.onFecha()">') +
       Fm.c(3, 'Moneda *', Fm.sel('dcMon', MONEDAS, d.moneda, 'onchange="Caja.onFecha()"')) +
       Fm.c(3, 'Tasa BCV (Bs por <span id="dcMonL">' + d.moneda + '</span>)', Fm.n('dcTasa', d.moneda === 'Bs' ? '' : d.tasa, 4, 'oninput="Caja.calc()"'), '', 'cx-tasa', 'dcTasaInfo') +
@@ -2615,7 +2652,8 @@ var Caja = {
     var trf = d.formaCaja === 'efectivo' ? {} : Caja.tarifa(c, d.formaCaja);
     d.comPct = trf.pct || 0; d.comMin = trf.min || 0; d.comFijo = trf.fijo || 0; d.comUmbral = trf.umbral || 0; d.comRecargo = trf.recargo || 0;
     d.comManual = (Caja.G.comMano && d.formaCaja !== 'efectivo') ? r2(Num.get('ccCom')) : null;
-    if (!d.numero) { toast('Indique el N° del soporte'); return; }
+    if (!d.numero && fa) { toast('Indique el N° de la factura'); return; }
+    if (!d.numero) d.numero = 'S/N';
     if (fa && !d.control) { toast('Indique el N° de control'); return; }
     if (!d.fecha) { toast('Indique la fecha'); return; }
     if (!(d.total > 0)) { toast('Indique el monto'); return; }
@@ -3125,7 +3163,7 @@ var Aud = {
     limite: 'Límite por gasto', umbral: 'Alerta de reposición %', activa: 'Activa', medio: 'Medio del fondo', cargoMensual: 'Mantenimiento mensual Bs', nRep: 'Reposiciones emitidas',
     'altoValor.umbral': 'Alto valor desde Bs', 'altoValor.recargo': 'Recargo alto valor Bs',
     seq: 'Secuencia', num: 'N° comprobante', periodo: 'Período', estado: 'Estado', docId: 'Documento',
-    ut: 'Unidad tributaria Bs', cajaUT: 'Caja chica sin retención (U.T.)', pctIvaDefecto: '% IVA por defecto', 'corr.iva': 'Último correlativo IVA', 'corr.islr': 'Último correlativo ISLR',
+    categAdmin: 'Categorías administrativas', ut: 'Unidad tributaria Bs', cajaUT: 'Caja chica sin retención (U.T.)', pctIvaDefecto: '% IVA por defecto', 'corr.iva': 'Último correlativo IVA', 'corr.islr': 'Último correlativo ISLR',
     'agente.nombre': 'Agente: nombre', 'agente.rif': 'Agente: RIF', 'agente.rifFmt': 'Agente: RIF con guiones', 'agente.tel': 'Agente: teléfono',
     'agente.ciudadIva': 'Agente: ciudad (IVA)', 'agente.ciudadIslr': 'Agente: ciudad (ISLR)', 'agente.dirIva': 'Agente: dirección (IVA)', 'agente.dirIslr': 'Agente: dirección (ISLR)',
     refBanco: 'Referencia bancaria', rol: 'Rol', permisos: 'Permisos', plantilla: 'Plantilla', ivaNoAplica: 'Retención IVA no aplica', islrNoAplica: 'Retención ISLR no aplica'
