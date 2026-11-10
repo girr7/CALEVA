@@ -1287,7 +1287,7 @@ var Xlsx=(function(){
   var crcT=(function(){var t=[];for(var n=0;n<256;n++){var c=n;for(var k=0;k<8;k++)c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1);t[n]=c>>>0;}return t;})();
   function crc32(b){var c=0xFFFFFFFF;for(var i=0;i<b.length;i++)c=crcT[(c^b[i])&0xFF]^(c>>>8);return (c^0xFFFFFFFF)>>>0;}
   function bytes(s){return new TextEncoder().encode(s);}
-  function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+  function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
   function col(n){var s='';n++;while(n>0){var m=(n-1)%26;s=String.fromCharCode(65+m)+s;n=Math.floor((n-1)/26);}return s;}
   function sheetXml(headers,rows){
     var o='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>';
@@ -1644,6 +1644,18 @@ var Seg = {
   cargar: function () {
     var self = this; try { var s = JSON.parse($('seedSeg').textContent); if (s && s.pedidos) self.d = s; } catch (e) {}
     if (!Store.cloud() || !Store.headers) return Promise.resolve();
+    /* auditoría 09-11-2026 (SQL 33): solo número, descripción y estado de los pedidos y sus ET; sin montos */
+    return Nube.rpc('cxp_pedidos_et').then(function (x) {
+      if (!x || !Array.isArray(x.pedidos)) throw Error('respuesta inválida');
+      var docs = { 4: { pedidos: x.pedidos }, 2: { valuaciones: (x.et || []).map(function (e) { return { pedido: e.pedido, estacion: e.estacion }; }), estaciones: x.catalogo || [] } };
+      self.d = self.armar(docs);
+    }).catch(function (e) {
+      if (!(e && (e.status === 404 || /cxp_pedidos_et|PGRST202|Could not find/i.test(e.message || '')))) return;   /* sin acceso o sin red: queda lo que había */
+      return self.cargarAnterior();   /* el SQL 33 aún no está instalado */
+    });
+  },
+  cargarAnterior: function () {
+    var self = this;
     return fetch(Store.rest() + 'caleva_estado?id=in.(2,4,5)&select=id,data', { headers: Store.headers() })
       .then(function (r) { return r.ok ? r.json() : []; })
       .then(function (rows) { var docs = {}; (rows || []).forEach(function (x) { docs[x.id] = x.data; }); if (docs[4]) self.d = self.armar(docs); })
@@ -2456,6 +2468,14 @@ var Pag = {
       if (f.eq > Math.max(0, Calc.saldo(o)) + 0.005) exc.push(TIPOS[o.tipo] + ' ' + o.numero + ': supera su saldo en ' + mon(f.eq - Math.max(0, Calc.saldo(o)), o.moneda));
     }
     if (exc.length && !confirm(exc.join('\n') + '\n\n¿Registrar igual?')) return;
+    /* auditoría 09-11-2026: todos los documentos que toca este pago se guardan en UNA operación del
+       servidor (cxp_guardar_lote). Antes de tocarlos se guarda su estado para volver atrás si el servidor
+       no acepta, y la clave de operación se conserva mientras la ventana siga abierta (un reintento no duplica). */
+    var afect = [d].concat(otros.map(function (f) { return docDe(f.id); })).concat(H.map(function (h) { return h.d; }))
+      .filter(function (x, i, a) { return x && a.indexOf(x) === i; });
+    var antes = afect.map(function (x) { return JSON.parse(JSON.stringify(x)); });
+    var op = this.P.op = this.P.op || (typeof Nube !== 'undefined' ? Nube.opId() : uid('op'));
+    var revertir = function () { antes.forEach(function (a) { var i = DB.documentos.findIndex(function (x) { return x.id === a.id; }); if (i >= 0) DB.documentos[i] = a; }); };
     if (rt) Object.assign(d, rt);
     var fe = $('pgFecha').value, forma = $('pgForma').value, ref = $('pgRef').value.trim(), C = this.P.comps;
     var reg = function (comps) {
@@ -2479,12 +2499,26 @@ var Pag = {
         (d.pagos = d.pagos || []).push(px = Object.assign(base(), { id: uid('pg'), monto: x, montoDoc: eq }));
         otros.forEach(function (f) { var o = docDe(f.id); (o.pagos = o.pagos || []).push(Object.assign(base(), { id: uid('pg'), monto: r2(f.monto), montoDoc: f.eq })); });
       }
-      Lector.soltar(); Pag.P = null;
-      Store.save(); UI.render();
-      if (volver && Lector.RV) Lector.volver(px.id, !!cambiaComp); else UI.cerrarModal();
-      toast(edit ? 'Pago corregido · ' + Calc.estado(d) + (H.length ? ' · grupo de ' + (H.length + 1) + ' documentos actualizado' : '')
-        : otros.length ? 'Pago agrupado registrado · ' + (otros.length + 1) + ' documentos con un mismo comprobante'
-        : (Calc.saldo(d) > 0.005 ? 'Abono registrado · saldo ' + mon(Calc.saldo(d), d.moneda) : 'Pago registrado · ' + Calc.estado(d)));
+      var fin = function (repetida) {
+        Lector.soltar(); Pag.P = null;
+        Store.save(); UI.render();
+        if (volver && Lector.RV) Lector.volver(px.id, !!cambiaComp); else UI.cerrarModal();
+        toast(edit ? 'Pago corregido · ' + Calc.estado(d) + (H.length ? ' · grupo de ' + (H.length + 1) + ' documentos actualizado' : '')
+          : otros.length ? 'Pago agrupado registrado · ' + (otros.length + 1) + ' documentos con un mismo comprobante'
+          : (Calc.saldo(d) > 0.005 ? 'Abono registrado · saldo ' + mon(Calc.saldo(d), d.moneda) : 'Pago registrado · ' + Calc.estado(d)));
+        if (repetida) Nube.leer().then(function () { UI.render(); toast('El pago ya estaba registrado: se cargaron los datos del servidor'); });
+      };
+      if (!Store.cloud()) { fin(); return; }
+      var bt2 = document.querySelector('#modalBody .cxacc .btn.g'); if (bt2) { bt2.disabled = true; bt2.textContent = 'Guardando en el servidor…'; }
+      Nube.lote(afect.map(function (x) { return { col: 'documentos', id: x.id, data: x }; }), op).then(function (res) { fin(res && res.repetida); }, function (e) {
+        revertir(); UI.render();
+        if (Pag.P) Pag.P.comps = comps.map(function (c) { return Object.assign({}, c); });   /* ya subidos: un reintento no los vuelve a subir */
+        if (bt2) { bt2.disabled = false; bt2.textContent = edit ? 'Guardar cambios' : 'Registrar pago'; }
+        var m = (e && e.message) || 'error';
+        if (e && e.red) alert('No hubo respuesta del servidor (' + m + '). El pago NO quedó confirmado en pantalla.\n\nPulse de nuevo «' + (edit ? 'Guardar cambios' : 'Registrar pago') + '»: si el servidor sí lo había guardado, no se duplica.');
+        else alert('El servidor no aceptó el pago y no se guardó nada (ningún documento del grupo): ' + (/CONFLICTO_VERSION/.test(m) ? 'otro usuario cambió uno de estos documentos. Cierre la ventana; se cargarán los datos actuales.' : m));
+        if (/CONFLICTO_VERSION/.test(m)) { UI.cerrarModal(); Nube.leer().then(function () { UI.render(); }); }
+      });
     };
     /* se suben solo los comprobantes nuevos; los que ya están en Dropbox quedan igual */
     var nuevos = C.filter(function (c) { return c.file; });
@@ -4325,7 +4359,22 @@ var Nube = {
   rpc: function (fn, args) {
     return Nube.f('rpc/' + fn, { method: 'POST', body: JSON.stringify(args || {}) }).then(function (r) {
       return r.text().then(function (t) { var d = null; try { d = t ? JSON.parse(t) : null; } catch (e) {}
-        if (!r.ok) throw Error((d && d.message) || 'Error ' + r.status); return d; });
+        if (r.status >= 500) throw { red: true, message: 'Error del servidor ' + r.status };
+        if (!r.ok) { var er = Error((d && d.message) || 'Error ' + r.status); er.status = r.status; throw er; } return d; });
+    }, function (e) { throw (e && e.red) ? e : { red: true, message: (e && e.message) || 'Sin conexión' }; });
+  },
+  opId: function () { try { if (crypto && crypto.randomUUID) return crypto.randomUUID().replace(/-/g, ''); } catch (e) {} return 'op' + Date.now().toString(36) + Math.random().toString(36).slice(2, 12); },
+  /* ---------- lote transaccional (pagos simples, agrupados y correcciones) ----------
+     items: [{col, id, data}] con los registros YA modificados. Se envían en UNA operación del servidor
+     con la versión que se leyó de cada uno y una clave de operación: si algo falla no se guarda nada, y
+     reintentar con la misma clave devuelve el resultado ya guardado (no duplica). */
+  lote: function (items, opId) {
+    return Nube.esperar().then(function () {
+      var arr = items.map(function (it) { var b = Nube.base[it.col + '|' + it.id]; return { col: it.col, id: it.id, version: b && b.v != null ? b.v : null, data: JSON.parse(JSON.stringify(it.data)) }; });
+      return Nube.rpc('cxp_guardar_lote', { p_op: opId, p_items: arr }).then(function (res) {
+        (res.items || []).forEach(function (x) { var it = arr.filter(function (a) { return a.col === x.col && a.id === x.id; })[0]; Nube.base[x.col + '|' + x.id] = { v: x.version, s: JSON.stringify(it ? it.data : null) }; });
+        return res;
+      });
     });
   },
 
@@ -4378,7 +4427,7 @@ var Nube = {
     Object.keys(Nube.base).forEach(function (k) {
       if (ya[k]) return; var b = Nube.base[k], x = k.split('|'); delete Nube.base[k];
       if (b.v == null) { Nube.pend = Nube.pend.filter(function (o, i) { return (Nube.corriendo && i === 0) || o.k !== k; }); return; }
-      Nube.encolar({ k: k, col: x[0], id: x.slice(1).join('|'), borrar: true });
+      Nube.encolar({ k: k, col: x[0], id: x.slice(1).join('|'), borrar: true, v: b.v });
     });
     Nube.drenar();
   },
@@ -4399,7 +4448,13 @@ var Nube = {
   },
   enviar: function (op) {
     var q = 'cxp_registros?coleccion=eq.' + encodeURIComponent(op.col) + '&id=eq.' + encodeURIComponent(op.id), rep = { Prefer: 'return=representation' }, b = Nube.base[op.k];
-    var pet = op.borrar ? Nube.f(q, { method: 'DELETE', headers: rep })
+    /* borrar: con la versión leída y dejando marca para las otras sesiones (SQL 32, auditoría 09-11-2026) */
+    if (op.borrar) {
+      op.opId = op.opId || Nube.opId();
+      return Nube.rpc('cxp_borrar', { p_col: op.col, p_id: op.id, p_version: op.v, p_op: op.opId })
+        .catch(function (e) { if (e && e.red) throw e; throw { message: /CONFLICTO_VERSION/.test(e.message) ? Nube.MSG_CONFLICTO : e.message }; });
+    }
+    var pet = op.borrar ? null
       : b && b.v != null ? Nube.f(q + '&version=eq.' + b.v + '&select=version', { method: 'PATCH', headers: rep, body: JSON.stringify({ data: op.data }) })
       : Nube.f('cxp_registros?select=version', { method: 'POST', headers: rep, body: JSON.stringify({ coleccion: op.col, id: op.id, data: op.data }) });
     return pet.catch(function (e) { throw { red: true, message: e && e.message }; }).then(function (r) {
@@ -4446,13 +4501,38 @@ var Nube = {
     return JSON.stringify(o);
   },
   ocupado: function () { var m2 = $('modal2Bg'); return Nube.pend.length || Nube.corriendo || $('modalBg').classList.contains('on') || (m2 && m2.classList.contains('on')); },
+  /* cambios desde el cursor (fecha, colección, id), paginados hasta el final, empezando unos segundos
+     antes del último visto (una transacción que confirmó tarde no se pierde; lo repetido se ignora). */
+  CURSOR_MARGEN_MS: 15000,
+  cambiosDesde: function (desde) {
+    var acum = [], cur = [desde || null, null, null];
+    var pag = function () {
+      return Nube.rpc('cxp_cambios', { p_ts: cur[0], p_col: cur[1], p_id: cur[2], p_limite: 1000 }).then(function (L) {
+        L = L || []; acum = acum.concat(L);
+        if (L.length < 1000) return acum;
+        var u = L[L.length - 1]; cur = [u.updated_at, u.coleccion, u.id]; return pag();
+      });
+    };
+    return pag();
+  },
   refrescar: function () {
     if (!DB || Nube.ocupado() || !Auth.token()) return;
-    Promise.all([Nube.f('cxp_registros?select=coleccion,id,data,version,updated_at&order=updated_at&limit=1000' + (Nube.ult ? '&updated_at=gt.' + encodeURIComponent(Nube.ult) : '')).then(function (r) { return r.ok ? r.json() : []; }), Nube.correlativos()]).then(function (res) {
+    var desde = Nube.ult ? new Date(new Date(Nube.ult).getTime() - Nube.CURSOR_MARGEN_MS).toISOString() : null;
+    Promise.all([Nube.cambiosDesde(desde), Nube.correlativos(), Nube.rpc('cxp_borrados_desde', { p_ts: desde }).catch(function () { return []; })]).then(function (res) {
       if (Nube.ocupado()) return;
       var cambio = false;
+      /* borrados en otras sesiones: se quitan si aquí no hay cambios pendientes sobre ellos */
+      (res[2] || []).forEach(function (x) {
+        var k = x.coleccion + '|' + x.id, b = Nube.base[k], L = DB[x.coleccion];
+        if (!L || !b || (b.v != null && b.v > x.version)) return;
+        var i = L.findIndex(function (d) { return d.id === x.id; });
+        if (i >= 0) { L.splice(i, 1); cambio = true; }
+        delete Nube.base[k];
+      });
       res[0].forEach(function (x) {
         if (x.updated_at > Nube.ult) Nube.ult = x.updated_at;
+        var bx = Nube.base[x.coleccion + '|' + x.id];
+        if (bx && bx.v != null && x.version <= bx.v && Nube.can(JSON.parse(bx.s)) === Nube.can(x.data)) return;   /* ya visto */
         var k = x.coleccion + '|' + x.id, b = Nube.base[k];
         if (x.coleccion === 'config') { if (Nube.can(x.data) !== Nube.can(Nube.cfg())) { Object.assign(DB.config, x.data); cambio = true; } Nube.verCfg = x.version; Nube.fijarBaseCfg(); return; }
         if (!DB[x.coleccion] || x.coleccion === 'config') return;
@@ -4537,7 +4617,8 @@ var Nube = {
       window.addEventListener('focus', Nube.refrescar); setInterval(Nube.refrescar, 60000);
       window.addEventListener('beforeunload', function (e) { if (Nube.pend.length) { e.preventDefault(); e.returnValue = ''; } });
     }).catch(function (e) {
-      if (e && e.red) return;
+      if (e && e.red && !Auth.token()) return;   /* sesión vencida: ya se pidió el acceso */
+      if (e && e.red) { Nube.bloqueo('No se pudieron leer los datos de Cuentas por Pagar (' + esc(e.message || 'sin conexión') + '). No se muestra ni se guarda nada hasta leerlos.<br><br><button class="btn" onclick="location.reload()">↻ Reintentar</button>'); return; }
       Nube.bloqueo('No se pudo abrir Cuentas por Pagar: ' + esc((e && e.message) || 'error') + (/could not find|does not exist|PGRST20/i.test((e && e.message) || '') ? '<br>Falta ejecutar los SQL 23, 24 y 25 en Supabase.' : ''));
     });
   },

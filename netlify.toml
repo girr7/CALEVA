@@ -8,6 +8,7 @@
     Permissions-Policy = "geolocation=(), microphone=(), camera=(), payment=(), usb=()"
     Strict-Transport-Security = "max-age=31536000; includeSubDomains"
     Cross-Origin-Opener-Policy = "same-origin"
+    X-Robots-Tag = "noindex, nofollow, noarchive"
 
 # ── Carpetas internas (papeles de trabajo, fuentes, backups): no servir públicamente ──
 [[redirects]]
@@ -37,6 +38,11 @@
   force = true
 [[redirects]]
   from = "/CLAUDE.md"
+  to = "/404.html"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/MANIFIESTO.txt"
   to = "/404.html"
   status = 404
   force = true

@@ -1534,8 +1534,42 @@ var Auth={
       .then(function(rows){var row=(rows&&rows[0])||{};self.role=row.rol||'sin_acceso';self.permisos=row.permisos||{ver:{},editar:{}};self.email=row.email||self.correo();})
       .catch(function(){self.role='sin_acceso';self.permisos={ver:{},editar:{}};});
   },
-  logout:function(){var t=this.token();this.clear();if(t){try{fetch(this.base()+'/auth/v1/logout',{method:'POST',headers:{'apikey':SB.key,'Authorization':'Bearer '+t}});}catch(e){}}location.href='../';}
+  logout:function(){if(window.Integridad&&!Integridad.antesDeSalir())return;var t=this.token();this.clear();if(t){try{fetch(this.base()+'/auth/v1/logout',{method:'POST',headers:{'apikey':SB.key,'Authorization':'Bearer '+t}});}catch(e){}}location.href='../';}
 };
+/* Sesión siempre vigente (09-11-2026, igual que Seguimiento y CxP). El token dura 1 h y solo se renovaba al
+   arrancar o tras un 401 que no reintentaba, así que un guardado con el equipo suspendido o la pestaña en
+   segundo plano fallaba con 401. Toda petición a Supabase renueva antes si venció y, si aun así responde 401,
+   renueva una vez y reintenta. La sesión es compartida por las apps de la suite (localStorage): antes de
+   renovar se relee, por si otra pestaña ya la renovó (no se gasta un refresh_token viejo ni se borra la de todas). */
+(function(){
+  var refrescar=Auth.refresh.bind(Auth), enCurso=null;
+  function releer(){var mem=Auth.session;(Auth.load||Auth.loadSession).call(Auth);if(!Auth.session)Auth.session=mem;}
+  Auth.refresh=function(fallo){   /* fallo = token que recibió 401: renovar aunque el reloj lo dé por vigente */
+    if(enCurso)return enCurso;
+    releer();
+    if(fallo?Auth.token()!==fallo:!Auth.expired())return Promise.resolve(true);   /* otra pestaña ya la renovó */
+    enCurso=refrescar().then(function(ok){enCurso=null;return ok;},function(){enCurso=null;return false;});
+    return enCurso;
+  };
+  var orig=window.fetch.bind(window);
+  function conToken(init){
+    var h=init&&init.headers; if(!h||typeof Headers!=='undefined'&&h instanceof Headers)return init;
+    var n={}; for(var k in h)n[k]=h[k];
+    if(/^Bearer /.test(n.Authorization||'')&&n.Authorization!=='Bearer '+SB.key&&Auth.token())n.Authorization='Bearer '+Auth.token();
+    var c={}; for(var j in init)c[j]=init[j]; c.headers=n; return c;
+  }
+  window.fetch=function(url,init){
+    var u=String(url&&url.url||url||'');
+    if(!(SB.url&&SB.key)||!Auth.session||u.indexOf(Auth.base())!==0||u.indexOf('/auth/v1/')>=0)return orig(url,init);
+    var usado;
+    return (Auth.expired()?Auth.refresh():Promise.resolve(true))
+      .then(function(){usado=Auth.token();return orig(url,conToken(init));})
+      .then(function(r){
+        if(r.status!==401||!Auth.session||!Auth.session.refresh_token)return r;
+        return Auth.refresh(usado||'-').then(function(ok){return ok&&Auth.token()?orig(url,conToken(init)):r;});
+      });
+  };
+})();
 var Cloud={
   rest:function(){var u=(SB.url||'').replace(/\/+$/,'').replace(/\/rest\/v1$/,'');return u+'/rest/v1/';},
   headers:function(){var t=(Auth.token())||SB.key;return {'apikey':SB.key,'Authorization':'Bearer '+t,'Content-Type':'application/json'};},
@@ -1556,14 +1590,15 @@ var Cloud={
   push:function(){
     var self=this; if(!Auth.cloud()||!Auth.puedeEscribir())return Promise.resolve(false);
     self.dot('sync');
-    var v=(self.version=(self.version||0)+1);
+    return Promise.reject(Error('Cloud.push sin versión está retirado: use Integridad.guardarNube'));
+    var v=0;
     var body=JSON.stringify({id:1,data:DB,version:v,updated_at:new Date().toISOString()});
     var hdr=self.headers();hdr['Prefer']='resolution=merge-duplicates,return=minimal';
     return fetch(self.rest()+SB.table+'?on_conflict=id',{method:'POST',headers:hdr,body:body})
       .then(function(r){if(r.status===401||r.status===403){Auth.refresh();self.dot('err');return false;}self.dot(r.ok?'ok':'err');return r.ok;})
       .catch(function(){self.dot('off');return false;});
   },
-  pushDebounced:function(){var self=this;clearTimeout(self._t);self._t=setTimeout(function(){self.push();},700);}
+  pushDebounced:function(){var self=this;clearTimeout(self._t);self._t=setTimeout(function(){Integridad.guardarNube();},600);}
 };
 
 const KEY='caleva_nomina_v1';
@@ -1592,53 +1627,29 @@ function renumerar(){
 const proximoNo = ()=> DB.trabajadores.filter(t=>t.estado==='activo').length+1;
 const hoy=()=>new Date().toISOString().slice(0,10);
 
-/* ── Semilla ── */
+/* ── Semilla de DEMOSTRACIÓN (datos ficticios; solo en modo local sin nube) ── */
 function seed(){
-  const P=[
-    ['MARTINEZ ROMERO SONAI ANYELINA','V-18941085','COORD. COMPRA TRAFICO Y DISTRIBUCION','LOTTT',130,600,40,'0134-0331-7833-1108-0174','BANESCO','CORRIENTE','04142419417','BANESCO','Reposo Post Natal — ticket transporte suspendido',1],
-    ['ARNAL DIAZ EMILIO JOSE','V-10537126','GERENTE DE PROYECTO','LOTTT',130,500,40,'0134-0331-7533-1302-8079','BANESCO','CORRIENTE','04141309106','BANESCO','',2],
-    ['ARTEAGA SUAREZ CHRIS YONEIKA','V-21092474','SOPORTE DE OPERACIONES','LOTTT',130,450,40,'0108-0017-0201-0031-0387','PROVINCIAL','CORRIENTE','04241284178','PROVINCIAL','',5],
-    ['MIJARES DIAZ YURIBY ROSSY','V-16034373','SOPORTE DE OPERACIONES','LOTTT',130,400,40,'0108-0017-0401-0025-7141','PROVINCIAL','CORRIENTE','04141148274','PROVINCIAL','',6],
-    ['BRAVO CARREÑO JESUS MARIA','V-6956731','TECNICO','LOTTT',130,350,40,'0102-0645-6100-0030-2326','VENEZUELA','CORRIENTE','04164072923','VENEZUELA','',3],
-    ['PALACIOS GOMEZ GERMAN ANTONIO','V-12820851','TECNICO','LOTTT',130,350,50,'0102-0532-8201-0001-0451','VENEZUELA','AHORRO','04241877903','VENEZUELA','',4],
-    ['CARRILLO VALL CLAUDIA','V-14892627','ANALISTA CONTABLE','LOTTT',130,200,40,'0174-0131-9013-1471-2157','BANPLUS','CORRIENTE','04241840179','BANESCO','Alt PM: BANPLUS 0174-0131-9013-1471-2157',7],
-    ['DOMINGUEZ COLMENAREZ BENIGNO ENRIQUE','V-4525990','CHOFER','FREELANCE',0,390,0,'','---','---','04241610114','VENEZUELA',''],
-    ['MELENDEZ ROSA','E-82227641','LIMPIEZA','FREELANCE',0,320,0,'','---','---','04242084213','VENEZUELA',''],
-    ['RUIZ GOMEZ GABRIEL ISAAC','V-30166761','SOPORTE DE OPERACIONES','FREELANCE',0,240,0,'0105-0138-5501-3801-5236','MERCANTIL','AHORRO','V-30166761','MERCANTIL','PM a cta MERCANTIL'],
-    ['DAVID DANIEL GONZALEZ CORREA','V-30565005','SOPORTE DE OPERACIONES','FREELANCE',0,200,0,'0105-0011-7910-1183-4146','MERCANTIL','CORRIENTE','V-30565005','MERCANTIL','']
-  ];
+  const N=['PERSONA DEMO UNO','PERSONA DEMO DOS','PERSONA DEMO TRES','PERSONA DEMO CUATRO'];
   return {
     version:2,
     config:{
-      empresa:'CORPORACION CALEVA, C.A.', rif:'J-00000000-0',
-      cuentaDebitar:'0191-0333-13-2100045859', emailNotif:'carlos@corpcaleva.com',
-      tasaBCV:742.2292, tasaFecha:hoy(), tasaAuto:true,
+      empresa:'EMPRESA DE DEMOSTRACIÓN', rif:'J-00000000-0', cuentaDebitar:'0000-0000-00-0000000000', emailNotif:'',
+      tasaBCV:100, tasaFecha:hoy(), tasaAuto:false,
       diasMesLottt:30, diasMesFreelance:20, diasQuincena:15,
-      sueldoBaseUSD:130, sueldoBaseBsQuincena:106.65, ticketQuincenalUSD:20,
-      ticketTransporteDefault:40, costoPagoMovil:0.003, maxPagoMovil:600000, bancoPagadorPM:'BANESCO', txtSep:';',
-      trabPorCoordinador:5,
-      pctIVA:0.16, pctRetIVA:0.75, pctISLR:0.03,
+      sueldoBaseUSD:130, sueldoBaseBsQuincena:100, ticketQuincenalUSD:20,
+      ticketTransporteDefault:40, costoPagoMovil:0.003, maxPagoMovil:600000, bancoPagadorPM:'BANESCO',
+      trabPorCoordinador:5, pctIVA:0.16, pctRetIVA:0.75, pctISLR:0.03,
       bncDescripcion:'Nomina', bncRelleno:'0000000000', bncIndicador:'SNN00', bncRedondear:true
     },
-    coordinadores:[
-      {nombre:'COORDINADOR A', desde:1, hasta:5},
-      {nombre:'COORDINADOR B', desde:6, hasta:11},
-      {nombre:'COORDINADOR C', desde:12, hasta:20}
-    ],
-    trabajadores: P.map((p,i)=>({
-      id:uid(), no:i+1, estado:'activo', motivoInactivo:'',
-      nombre:p[0], cedula:p[1], cargo:p[2], tipo:p[3],
-      sueldoBaseUSD:p[4], bonoMensualUSD:p[5], ticketTransporteUSD:p[6],
-      cuentaBanco:p[7], banco:p[8], tipoCta:p[9], telRefPM:p[10], telefonoPM:(/^0\d{10}$/.test(p[10])?p[10]:''), bancoPM:p[11],
-      email:'carlos@corpcaleva.com', observaciones:p[12],
-      fechaIngreso:'', fechaIngresoLottt:'', fechaEgreso:'', motivoEgreso:'',
-      fechaNacimiento:'', nacionalidad:'Venezolana', estadoCivil:'',
-      direccion:'', telefono:'', emailPersonal:'',
-      nroIVSS:'', rif:'', nroFAOV:'', cargasFamiliares:0,
-      historialLaboral:[],
-      periodicidad:'quincenal', quincenaCobro:2, personeria:'natural',
-      pctIVA:0, pctRetIVA:0, pctISLR:0,
-      ordenBNC: p[13]||0
+    coordinadores:[{nombre:'COORDINADOR A', desde:1, hasta:5}],
+    trabajadores: N.map((n,i)=>({
+      id:uid(), no:i+1, estado:'activo', motivoInactivo:'', nombre:n, cedula:'V-0000000'+(i+1), cargo:'CARGO DEMO',
+      tipo:i===3?'FREELANCE':'LOTTT', sueldoBaseUSD:i===3?0:130, bonoMensualUSD:300+i*50, ticketTransporteUSD:i===3?0:40,
+      cuentaBanco:'0000-0000-0000-0000-000'+(i+1), banco:'BANESCO', tipoCta:'CORRIENTE', telRefPM:'0000000000'+(i+1), telefonoPM:'0000000000'+(i+1), bancoPM:'BANESCO',
+      email:'', observaciones:'', fechaIngreso:'2024-01-01', fechaIngresoLottt:'', fechaEgreso:'', motivoEgreso:'',
+      fechaNacimiento:'', nacionalidad:'Venezolana', estadoCivil:'', direccion:'', telefono:'', emailPersonal:'',
+      nroIVSS:'', rif:'', nroFAOV:'', cargasFamiliares:0, historialLaboral:[],
+      periodicidad:'quincenal', quincenaCobro:2, personeria:'natural', pctIVA:0, pctRetIVA:0, pctISLR:0, ordenBNC:i+1
     })),
     prestamos:[],
     periodos:[]
@@ -1700,8 +1711,10 @@ function load(){
   PER = DB.periodos[DB.periodos.length-1].id;
   saveLocal();
 }
-function saveLocal(){ try{localStorage.setItem(KEY,JSON.stringify(DB))}catch(e){toast('No se pudo guardar: '+e.message,'err')} }
+function saveLocal(){ if(Auth.cloud())return;   /* en la nube no hay copia local de los datos */
+  try{localStorage.setItem(KEY,JSON.stringify(DB))}catch(e){toast('No se pudo guardar: '+e.message,'err')} }
 function save(){ saveLocal(); if(Auth.cloud()&&Auth.puedeEscribir()) Cloud.pushDebounced(); }
+/* auditoría 09-11-2026: el envío lo hace Integridad (versión verificada, fusión y estado visible) */
 function per(){ return DB.periodos.find(p=>p.id===PER) || DB.periodos[DB.periodos.length-1] }
 const editable = ()=> per().estado==='borrador';
 /** Tasa efectiva: si está pagada usa la del día de pago; si no, la viva */
@@ -2106,9 +2119,7 @@ function aprobarNomina(){
 function confirmarAprobacion(){
   if(!Auth.esAdmin()){toast('Solo el administrador puede aprobar, pagar o revertir la nómina','err');return;}
   const p=per();
-  p.fechaPagoPrevista=document.getElementById('ap_fecha').value||p.fechaPagoPrevista;
-  p.estado='aprobada'; p.aprobadaEn=hoy(); p.tasaBCVAprobacion=p.tasaBCV;
-  save(); closeModal(); render(); toast('Nómina aprobada — lista para pagar');
+  Integridad.aprobar(document.getElementById('ap_fecha').value||p.fechaPagoPrevista);
 }
 function registrarPago(){
   if(!Auth.esAdmin()){toast('Solo el administrador puede aprobar, pagar o revertir la nómina','err');return;}
@@ -2152,13 +2163,11 @@ function confirmarPago(){
   const p=per(), f=document.getElementById('pg_fecha').value, t=+document.getElementById('pg_tasa').value;
   if(!f){toast('Indica la fecha de pago','err');return}
   if(!t||t<=0){toast('Indica una tasa BCV válida','err');return}
-  p.fechaPagoReal=f; p.tasaBCVPago=t;
-  registrarCuotas(p);   /* antes de marcarlo pagado: un período pagado solo cuenta lo registrado */
-  p.estado='pagada'; p.pagadaEn=hoy();
-  save(); closeModal(); render(); toast('Pago registrado — período cerrado a tasa '+fN(t,4));
+  Integridad.pagar(f,t);
 }
 function revertir(a){
   if(!Auth.esAdmin()){toast('Solo el administrador puede aprobar, pagar o revertir la nómina','err');return;}
+  return Integridad.revertir(a);
   const p=per();
   const msg = a==='borrador' ? '¿Devolver a borrador? Las entradas volverán a ser editables.'
                              : '¿Reabrir el período pagado? Se libera la tasa congelada y podrás registrar el pago de nuevo.';
@@ -2719,7 +2728,7 @@ const BNC={CAB:{tipo:1,cant:5,monto:15,relleno:10,ind:5},
            DET:{tipo:1,fecha:8,ctaDeb:20,ctaBen:20,monto:15,desc:60,id:10,nombre:80,email:100,ref:10}};
 const padR=(s,n)=>{s=String(s??'').slice(0,n);return s+' '.repeat(n-s.length)};
 const padL=(s,n)=>{s=String(s??'').slice(-n);return '0'.repeat(n-s.length)+s};
-/** Cédula V-18941085 → V018941085 (letra + 9 dígitos) */
+/** Cédula V-12345678 → V012345678 (letra + 9 dígitos) */
 function idBNC(ced){
   const s=String(ced||'').trim().toUpperCase();
   const m=s.match(/^([VEJPG])?-?(\d+)$/);
@@ -2732,7 +2741,7 @@ function nombreBNC(n){
   return w.length>=3 ? w.slice(2).concat(w.slice(0,2)).join(' ') : String(n||'');
 }
 function txtRows(){
-  const R=calcPeriodo(), c=DB.config, p=R.p;
+  const R=calcPeriodo(), c=R.c||DB.config, p=R.p;
   const fp=p.fechaPagoReal||p.fechaPagoPrevista||hoy();
   const [Y,M,D]=fp.split('-');
   const fecha=D+M+Y;                                        // DDMMAAAA
@@ -2749,7 +2758,7 @@ function txtRows(){
   });
 }
 function bncCabecera(rows){
-  const c=DB.config;
+  const c=calcPeriodo().c||DB.config;
   const total=rows.reduce((a,r)=>a+r.montoBs,0);
   return 'C'+padL(rows.length,5)+padL(Math.round(total*100),15)
          +(c.bncRelleno||'0000000000')+(c.bncIndicador||'SNN00');
@@ -3204,7 +3213,7 @@ function editTrab(id){
     <fieldset class="fset"><legend>Datos Bancarios <span style="color:var(--txt3);font-weight:500;text-transform:none;letter-spacing:0">· para transferencia</span></legend>
       <div class="grid g3">
       <div class="f" style="grid-column:span 2"><label>Cuenta Bancaria (20 dígitos) ${J?'<span class="req">*</span>':''}</label>
-        <input id="t_cuentaBanco" value="${esc(formatoCuenta(t.cuentaBanco))}" placeholder="0134-0331-7833-1108-0174" inputmode="numeric" maxlength="24" pattern="\d{4}-\d{4}-\d{4}-\d{4}-\d{4}" oninput="mascaraCuenta(this)" onblur="mascaraCuenta(this)"></div>
+        <input id="t_cuentaBanco" value="${esc(formatoCuenta(t.cuentaBanco))}" placeholder="0000-0000-0000-0000-0000" inputmode="numeric" maxlength="24" pattern="\d{4}-\d{4}-\d{4}-\d{4}-\d{4}" oninput="mascaraCuenta(this)" onblur="mascaraCuenta(this)"></div>
       ${S('Banco','banco',t.banco,BANCOS)}${S('Tipo de Cuenta','tipoCta',t.tipoCta,['CORRIENTE','AHORRO','---'])}
       ${F('Orden en el archivo TXT','ordenBNC',t.ordenBNC,'number','0 = usar el correlativo.','min="0"')}
     </div></fieldset>
@@ -3741,9 +3750,12 @@ const MAPA_FICHAS={
   'periodicidad':'periodicidad','% iva':'pctIVA','pct iva':'pctIVA','iva %':'pctIVA',
   '% ret iva':'pctRetIVA','pct ret iva':'pctRetIVA','retencion iva %':'pctRetIVA',
   '% islr':'pctISLR','pct islr':'pctISLR','retencion islr %':'pctISLR',
-  'observaciones':'observaciones','observacion':'observaciones'
+  'observaciones':'observaciones','observacion':'observaciones',
+  /* cabeceras reales del Excel de nómina (hoja DIRECTORIO) */
+  'activo':'estado','ticket transp. ($)':'ticketTransporteUSD','ticket transp ($)':'ticketTransporteUSD','ticket transp.':'ticketTransporteUSD',
+  'tel / ref pm':'telefonoPM','tel/ref pm':'telefonoPM','tel / ref. pm':'telefonoPM','banco pm':'bancoPM','tipo cta.':'tipoCta'
 };
-const norm=s=>String(s??'').trim().toLowerCase().replace(/\s+/g,' ');
+const norm=s=>{const x=String(s??'').trim().toLowerCase().replace(/\s+/g,' ');const sin=x.normalize('NFD').replace(/[\u0300-\u036f]/g,'');return MAPA_FICHAS[x]!==undefined||MAPA_FICHAS[sin]===undefined?x:sin;};
 /* Fecha: serial Excel, Date, DD/MM/AAAA o AAAA-MM-DD → AAAA-MM-DD */
 function parseFecha(v){
   if(v==null||v==='') return '';
@@ -3778,16 +3790,7 @@ function parseCSV(txt){
   if(c||f.length){f.push(c);filas.push(f)}
   return filas;
 }
-function cargarSheetJS(){
-  return new Promise((res,rej)=>{
-    if(window.XLSX) return res(window.XLSX);
-    const s=document.createElement('script');
-    s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-    s.onload=()=>res(window.XLSX);
-    s.onerror=()=>rej(new Error('Sin conexión para leer .xlsx. Guarda la plantilla como CSV e impórtala.'));
-    document.head.appendChild(s);
-  });
-}
+function cargarSheetJS(){ return Promise.reject(Error('Retirado: se usa XlsxLector (local, sin CDN)')); }
 async function importarFichas(inp){
   const file=inp.files[0]; inp.value=''; if(!file) return;
   try{
@@ -3795,11 +3798,11 @@ async function importarFichas(inp){
     if(/\.csv$/i.test(file.name)){
       matriz=parseCSV(await file.text());
     }else{
-      toast('Cargando lector de Excel…');
-      const XLSX=await cargarSheetJS();
-      const wb=XLSX.read(await file.arrayBuffer(),{type:'array',cellDates:true});
-      const hoja=wb.SheetNames.find(n=>/ficha/i.test(n))||wb.SheetNames[0];
-      matriz=XLSX.utils.sheet_to_json(wb.Sheets[hoja],{header:1,raw:true,defval:''});
+      const libro=await XlsxLector.leer(await file.arrayBuffer());
+      /* la hoja cuyos encabezados traen cédula y nombre (DIRECTORIO en el Excel real, FICHAS en la plantilla) */
+      const tieneCab=n=>(libro.hojas[n]||[]).slice(0,20).some(f=>{const c=f.map(norm);return c.some(x=>MAPA_FICHAS[x]==='cedula')&&c.some(x=>MAPA_FICHAS[x]==='nombre');});
+      const hoja=libro.SheetNames.find(n=>/ficha/i.test(n)&&tieneCab(n))||libro.SheetNames.find(tieneCab)||libro.SheetNames[0];
+      matriz=libro.hojas[hoja];
     }
     procesarFichas(matriz,file.name);
   }catch(e){ toast(e.message,'err') }
@@ -3837,7 +3840,7 @@ function procesarFichas(matriz,nombreArchivo){
       nombre:nombre.toUpperCase(), cedula:ced,
       cargo:String(V(fila,'cargo')||'').trim().toUpperCase(),
       tipo: ['LOTTT','FREELANCE','CONTRATISTA'].includes(tipo)?tipo:(tipo.startsWith('CONTRAT')?'CONTRATISTA':''),
-      estado: est.startsWith('inactiv')?'inactivo':(est.startsWith('activ')?'activo':''),
+      estado: est.startsWith('inactiv')||est==='no'||est==='false'?'inactivo':(est.startsWith('activ')||est==='si'||est==='sí'||est==='true'?'activo':''),
       rif:String(V(fila,'rif')||'').trim(),
       fechaNacimiento:parseFecha(V(fila,'fechaNacimiento')),
       nacionalidad:String(V(fila,'nacionalidad')||'').trim(),
@@ -3935,9 +3938,10 @@ function aplicarImportacion(){
 }
 
 /* ═══════════ EXPORT / IMPORT ═══════════ */
-function expJSON(){dl(JSON.stringify(DB,null,2),`respaldo_nomina_caleva_${hoy()}.json`,'application/json');toast('Respaldo exportado')}
+function expJSON(){if(Auth.cloud())return Integridad.descargarRespaldo();dl(JSON.stringify(DB,null,2),`respaldo_nomina_caleva_${hoy()}.json`,'application/json');toast('Respaldo exportado')}
 function impJSON(inp){
-  const f=inp.files[0];if(!f)return;const r=new FileReader();
+  const f=inp.files[0];if(!f)return;
+  if(Auth.cloud()){ inp.value=''; return Integridad.restaurarArchivo(f); }const r=new FileReader();
   r.onload=()=>{try{const d=JSON.parse(r.result);
     if(!d.trabajadores||!d.config)throw new Error('Formato no reconocido');
     if(!confirm('Esto reemplazará todos los datos actuales. ¿Continuar?'))return;
@@ -3947,6 +3951,7 @@ function impJSON(inp){
   r.readAsText(f);inp.value='';
 }
 function resetDB(){
+  if(Auth.cloud()){ toast('En la nube no se restablece: use Respaldo → Restaurar','err'); return; }
   if(!confirm('Se borrarán TODOS los datos y se restaurará la carga inicial. ¿Continuar?'))return;
   if(!confirm('Confirmación final: esta acción no se puede deshacer.'))return;
   localStorage.removeItem(KEY);load();render();toast('Datos restablecidos');
@@ -4038,7 +4043,9 @@ function doLogin(){
     if(r.ok){hideLogin();arrancarNube();} else msg.textContent=r.err||'No se pudo iniciar sesion';
   });
 }
-function arrancarNube(){
+function arrancarNube(){ return Integridad.arrancarNube();
+}
+function arrancarNubeAnterior(){
   Auth.fetchPerfil().then(function(){
     if(!Auth.tieneAcceso()){ showNoAccess(); return; }
     aplicarRol();
@@ -4055,7 +4062,9 @@ function arrancarNube(){
     });
   });
 }
-function boot(){
+function boot(){ return Integridad.arrancar();
+}
+function bootAnterior(){
   load();
   if(!Auth.cloud()){ render(); if(DB.config.tasaAuto) fetchTasa(0); return; }
   Auth.loadSession(); render();
@@ -4063,7 +4072,7 @@ function boot(){
   else { arrancarNube(); }
 }
 (function(){var b=document.getElementById('lgLogo'),l=document.getElementById('lgLogo');if(b&&l)l.src=b.src;})();
-boot();
+/* boot() lo llama nomina_integridad.js al final del documento, cuando todos los módulos ya cargaron */
 
 
 /* ═══════════════════════════════════════════════════════════════
@@ -4285,14 +4294,8 @@ boot();
   if(typeof Auth==='undefined'||typeof Cloud==='undefined')return;
   if(!document.getElementById('a11yFocusCss')){ var fc=document.createElement('style'); fc.id='a11yFocusCss'; fc.textContent='a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,[tabindex]:focus-visible{outline:2px solid #4A7CB5!important;outline-offset:2px!important}'; document.head.appendChild(fc); }
   function ts(){ var d=new Date(),z=function(n){return (n<10?'0':'')+n;}; return d.getFullYear()+z(d.getMonth()+1)+z(d.getDate())+'_'+z(d.getHours())+z(d.getMinutes()); }
-  function download(){ fetch(Cloud.rest()+SB.table+'?id=eq.1&select=data',{headers:Cloud.headers()}).then(function(r){return r.json();}).then(function(rows){ var d=(rows&&rows[0]&&rows[0].data)||{}; var blob=new Blob([JSON.stringify(d,null,2)],{type:'application/json'}); var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='Respaldo_Nomina_'+ts()+'.json'; document.body.appendChild(a); a.click(); a.remove(); }).catch(function(e){ alert('No se pudo generar el respaldo: '+e.message); }); }
-  function restore(file){ var r=new FileReader(); r.onload=function(){ var obj; try{obj=JSON.parse(r.result);}catch(e){alert('Archivo inválido: '+e.message);return;}
-    if(!obj||typeof obj!=='object'||!(('trabajadores' in obj)||('periodos' in obj)||('prestamos' in obj))){ alert('No parece un respaldo de Nómina.'); return; }
-    if(!confirm('RESTAURAR reemplazará TODOS los datos de Nómina por los del archivo. No se puede deshacer. ¿Continuar?'))return;
-    if(!confirm('Confirmación final: ¿reemplazar los datos actuales por el respaldo?'))return;
-    var h=Cloud.headers(); h['Prefer']='return=minimal';
-    fetch(Cloud.rest()+SB.table+'?id=eq.1',{method:'PATCH',headers:h,body:JSON.stringify({data:obj})}).then(function(r){ if(!r.ok)throw Error('HTTP '+r.status); alert('Datos restaurados. La página se recargará.'); location.reload(); }).catch(function(e){ alert('No se pudo restaurar: '+e.message); }); };
-    r.readAsText(file); }
+  function download(){ Integridad.descargarRespaldo(); }   /* valida respuesta, estructura y conteos */
+  function restore(file){ Integridad.restaurarArchivo(file); }   /* validada, con copia previa en el servidor */
   function openOv(){ if(document.getElementById('nomBkOv'))return; var ov=document.createElement('div'); ov.id='nomBkOv'; ov.style.cssText='position:fixed;inset:0;background:rgba(12,24,36,.5);z-index:600;display:flex;align-items:center;justify-content:center;padding:26px';
     ov.innerHTML='<div role="dialog" aria-label="Respaldo de Nómina" style="background:#fff;max-width:460px;width:100%;border-radius:14px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.35)"><div style="display:flex;align-items:center;gap:10px;padding:14px 18px;background:linear-gradient(120deg,#001E3D,#002E5B);color:#fff"><b style="flex:1;font-size:15px">Respaldo · Nómina</b><button id="nomBkX" aria-label="Cerrar" style="background:rgba(255,255,255,.15);border:0;color:#fff;width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:16px">×</button></div><div style="padding:18px"><p style="font-size:13px;color:#41586E;margin:0 0 12px">Descarga una copia completa del estado (JSON) desde la nube y guárdala en lugar seguro. Para recuperación rápida, puedes restaurar desde un respaldo previo.</p><button id="nomBkDl" style="width:100%;background:#1E5AA8;color:#fff;border:0;border-radius:9px;padding:11px;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:10px">↓ Descargar respaldo (JSON)</button><label style="display:block;border:1px dashed #C2D0DB;border-radius:9px;padding:11px;text-align:center;font-size:12.5px;color:#1E5AA8;cursor:pointer">Restaurar desde archivo…<input id="nomBkFile" type="file" accept="application/json,.json" style="display:none"></label></div></div>';
     document.body.appendChild(ov); ov.addEventListener('click',function(e){if(e.target===ov)ov.remove();}); document.getElementById('nomBkX').onclick=function(){ov.remove();}; document.getElementById('nomBkDl').onclick=download; document.getElementById('nomBkFile').onchange=function(){ if(this.files[0])restore(this.files[0]); }; }
@@ -4307,7 +4310,7 @@ boot();
   if(typeof Cloud==='undefined')return;
   function db(){ try{ return (typeof DB!=='undefined')?DB:(window.DB||null); }catch(e){ return null; } }
   function clone(o){ try{return JSON.parse(JSON.stringify(o));}catch(e){return null;} }
-  function A(action,entity,before,after){ try{ fetch(Cloud.rest()+'rpc/app_audit_write',{method:'POST',headers:Cloud.headers(),body:JSON.stringify({p_app:'nomina',p_action:action,p_entity:entity||null,p_entity_id:null,p_before:before||null,p_after:after||{}})}); }catch(e){} }
+  function A(action,entity,before,after){ (window.__nomAudPend=window.__nomAudPend||[]).push({action:action,entity:entity,before:before,after:after}); }
   var KF=['id','cedula','no','codigo','code','nombre','trabajador'];
   function keyOf(o){ if(o&&typeof o==='object'&&!Array.isArray(o)){ for(var i=0;i<KF.length;i++){ var v=o[KF[i]]; if(v!=null&&v!=='')return KF[i]+'='+v; } } return null; }
   function sh(v){ if(v==null)return ''; if(typeof v==='object')return JSON.stringify(v).slice(0,140); return String(v).slice(0,140); }
@@ -4348,7 +4351,7 @@ boot();
 (function(){ 'use strict';
   function DBok(){ return (typeof DB!=='undefined'&&DB)?DB:null; }
   var iv=setInterval(function(){ if(DBok()){ clearInterval(iv); DB.vacaciones=DB.vacaciones||[]; DB.vacaciones.forEach(function(v){ if(v.pagoEstado===undefined) v.pagoEstado = v.pagado?'ya_pagada':'pendiente'; }); } },250);
-  window.__VAC_HIST=[{"cedDigits": "18941085", "nombre": "SONAI ANYELINA MARTINEZ ROMERO", "periodos": [{"n": 1, "disfrutados": 15, "pagada": true, "fechas": "1) 09/02/24 AL27/02/24                                                                                                                                                                                                                                             2)20 al 23 de Septiembre 2024                                                                                                                                                                                                                                         3)2,3,4,7 de Octubre 2024", "obs": "PAGADAS Y DISFRUTADAS"}, {"n": 2, "disfrutados": 16, "pagada": true, "fechas": "1)  20/12/24 al 06/01/25 (Tomo 6 Dias)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        2)  20, 21/Febrero/25                                                                                                                                                                                                                                                         3)  05,06,07/Marzo/25                                                                                                                                                                                                                                                                   4)  08,09,10,11,12 /Septiembre/25", "obs": "PAGADAS Y DISFRUTADAS"}, {"n": 3, "disfrutados": 6, "pagada": false, "fechas": "1) 22/12/25 al 02/01/26(Tomo 6 Dias)", "obs": "Vencer Diciembre 2025"}, {"n": 4, "disfrutados": null, "pagada": false, "fechas": "Estas Vacaciones Vencen en Diciembre 2026", "obs": "Proximas vacaciones a vencer Diciembre 2026"}]}, {"cedDigits": "10537126", "nombre": "EMILIO JOSE ARNAL DIAZ", "periodos": [{"n": 1, "disfrutados": 15, "pagada": true, "fechas": "1)2/05/24 AL 23 /05/2024/ Tomo 15 Dias", "obs": "PAGADAS Y DISFRUTADAS"}, {"n": 2, "disfrutados": 12, "pagada": true, "fechas": "1)20/12/24 al 06/01/25 (Tomo 6 Dias)                                                                                                                                                                                                                                                          2) 22/12/25 al 02/01/26(Tomo 6 Dias) Tomo 12 Dias", "obs": "PAGADAS Y DISFRUTADAS"}, {"n": 3, "disfrutados": 18, "pagada": null, "fechas": "1)19/01/26 AL 2 /02/2026(Tomo 10 Dias)                                                                                                                                                                                                                  2) 1/04/26 (Tomo 1 Dia Semana santa)                                                                                                                                                                                                              3)07/09/26 AL 15 /09/2026(Tomo 07 Dias) Total tomada 18 dias", "obs": "Proximas vacaciones a vencer Marzo 2026 Se le va hacer el pago de sus vacaciones mas no el disfrute"}]}, {"cedDigits": "21092474", "nombre": "CHRIS YONEIKA ARTEAGA SUAREZ", "periodos": [{"n": 1, "disfrutados": 15, "pagada": true, "fechas": "1) 27/09/24 al 15/10/2024", "obs": "PAGADAS YDISFRUTADAS"}, {"n": 2, "disfrutados": 6, "pagada": true, "fechas": "1) 20/12/24 al 06/01/25(Tomo 6 Dias", "obs": "PAGADAS PENDIENTE  DIAS DE  DISFRUTE"}, {"n": 3, "disfrutados": 11, "pagada": true, "fechas": "1) 22/12/25 al 12/01/26(Tomo 11 Dias)", "obs": "PAGADAS PENDIENTE  DIAS DE  DISFRUTE"}, {"n": 4, "disfrutados": 12, "pagada": false, "fechas": "1) 1/04/26 (Tomo 1 Dia Semana santa)                     2) 1/10/2026 al 19/10/2026", "obs": "Proximas vacaciones a vencer Mayo 2026"}]}, {"cedDigits": "16034373", "nombre": "YURIBY ROSSY MIJARES DIAZ", "periodos": [{"n": 1, "disfrutados": 15, "pagada": true, "fechas": "1) 16/08/24 AL 06/09/2024", "obs": "PAGADAS Y DISFRUTADAS"}, {"n": 2, "disfrutados": 13, "pagada": true, "fechas": "1) 20/12/24 al 06/01/25(Tomo 6 Dias)                                                                                                                                                                                                                            2 ) Tomo el 24-11-2025(Tomo 1 Dias)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                3) 22/12/25 al 02/01/26(Tomo 6 Dias)Total 13 Dias", "obs": "PAGADAS Y DISFRUTADAS"}, {"n": 3, "disfrutados": 18, "pagada": null, "fechas": "1) 1/04/26 (Tomo 1 Dia Semana Santa)                                                                                                                                                                                                                     2) 09/04/26  al 10/04/26(Tomo 2 Dias)                                                                                                                                                                                                                                                                                                                                                                                                                                               3) 27/04/26 al 30/04/2026 (Tomo 4 Dias) Total 7 Dias 4) 20/10/2026 al 04/11/2026", "obs": "PAGADAS Y NO DISFRUTADAS"}]}, {"cedDigits": "12820851", "nombre": "GERMAN ANTONIO PALACIOS GOMEZ", "periodos": [{"n": 1, "disfrutados": 15, "pagada": true, "fechas": "1) 2 /05/2024 AL 22/05/2024", "obs": "DISFRITADAS Y PAGADAS"}, {"n": 2, "disfrutados": 12, "pagada": true, "fechas": "1) 20/12/24 al 06/01/25(Tomo 6 Dias)                                                                                                                                                                                                                            2) 22/12/25 al 02/01/26(Tomo 6 Dias) Total 12 Dias", "obs": "DISFRITADAS Y PAGADAS"}, {"n": 3, "disfrutados": 1, "pagada": false, "fechas": "1) 1/04/26 (Tomo 1 Dia Semana santa)", "obs": "Proximas vacaciones a vencer Mayo 2026"}]}, {"cedDigits": "14892627", "nombre": "CLAUDIA CARRILLO VALL", "periodos": [{"n": 1, "disfrutados": 0, "pagada": true, "fechas": "", "obs": ""}, {"n": 2, "disfrutados": 0, "pagada": null, "fechas": "", "obs": ""}, {"n": 3, "disfrutados": 0, "pagada": null, "fechas": "", "obs": ""}, {"n": 4, "disfrutados": 7, "pagada": false, "fechas": "1) 22/12/25 al 02/01/26(Tomo 6 Dias)                                                                                                                                                                                                                            2) 1/04/26 (Tomo 1 Dia Semana santa)", "obs": "Proxima vacaciones Vencen en Septiembre 2026"}]}, {"cedDigits": "4525990", "nombre": "BENIGNO ENRIQUE DOMINGUEZ COLMENAREZ", "periodos": [{"n": 1, "disfrutados": 15, "pagada": true, "fechas": "1) 29/07/24 al 16/08/24", "obs": "PAGADAS Y DISFRUTADAS"}, {"n": 2, "disfrutados": 16, "pagada": null, "fechas": "1) 20/12/24 al 06/01/25 (Tomo 6 Dias)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 2) 31/07/25 al 14/08/25", "obs": "PAGADAS Y DISFRUTADAS"}, {"n": 3, "disfrutados": 17, "pagada": true, "fechas": "3) 22/12/25 al 02/01/26(Tomo 6 Dias)                                                                                                                                                                                                                            2) 1/04/26 (Tomo 1 Dia Semana santa)                                                                                                                                                                                                                            3) Del 3,al 14 de Agosto 2026                                                                                                                                                                                                                                      (Tomo 10 Dia de sus vacaciones)", "obs": "Proxima vacaciones Vencen en Julio 2027"}]}, {"cedDigits": "82227641", "nombre": "ROSA MELENDEZ", "periodos": [{"n": 1, "disfrutados": 15, "pagada": true, "fechas": "1) 20/12/24 al 06/01/25                                                                                                                                                                                                                                                     2) 16-4/25 AL 5 -05/25", "obs": "PAGADAS Y DISFRUTADAS"}, {"n": 2, "disfrutados": 17, "pagada": null, "fechas": "16/4/25 AL 5 /05/25", "obs": "PAGADAS Y DISFRUTADAS"}, {"n": 3, "disfrutados": 18, "pagada": null, "fechas": "1) 22/12/25 al 02/01/26(Tomo 6 Dias)                                                                                                                                                                                                                                                                                                                                                                                                                                            1) 1/04/26 (Tomo 1 Dia Semana santa)                                                                                                                                                                                                                          3)11-5-26 Hata el 26-5-26(Tomo 11)", "obs": "PAGADAS Y DISFRUTADAS"}]}, {"cedDigits": "301667619", "nombre": "GABRIEL ISAAC RUIZ GOMEZ", "periodos": [{"n": 1, "disfrutados": 7, "pagada": null, "fechas": "1) 22/12/25 al 02/01/26(Tomo 6 Dias)                                                                                                                                                                                                                            2) 1/04/26 (Tomo 1 Dia Semana santa)", "obs": "Proxima vacaciones Vencen en Julio  2027"}]}];
+  window.__VAC_HIST=[];   /* el histórico ya se importó (vacMigrado); los datos viven en el servidor */
 
   function pd(x){ if(!x)return null; if(x instanceof Date)return x; var m=String(x).slice(0,10).split('-'); if(m.length===3&&m[0].length===4)return new Date(+m[0],+m[1]-1,+m[2]); var z=new Date(x); return isNaN(z)?null:z; }
   function ymd(dt){ var z=pd(dt); if(!z)return ''; return z.getFullYear()+'-'+String(z.getMonth()+1).padStart(2,'0')+'-'+String(z.getDate()).padStart(2,'0'); }
@@ -4712,6 +4715,815 @@ boot();
   };
 })();
 
+</script>
+<script id="caleva-sync">
+/* ════════════════════════════════════════════════════════════════════════════
+   CalevaSync · documentos JSON con versión verificada por el servidor
+   (auditoría 09-11-2026, hallazgos 3, 4 y 11). Lo usan Nómina y Seguimiento.
+
+   · leer(): distingue datos presentes, documento vacío, acceso denegado,
+     desconexión y error del servidor. Nunca escribe.
+   · guardar(): un solo envío a la vez (serializado); PATCH ?id=eq.N&version=eq.V
+     con version=V+1. Si otra persona guardó antes, se combinan los cambios que no
+     chocan (fusión de tres vías por id/clave); si chocan, se pregunta qué conservar.
+     El éxito se confirma SOLO cuando el servidor devolvió la fila nueva.
+   · Los cambios pendientes se conservan (memoria + copia por usuario) hasta que
+     el servidor los acepte; al cerrar sesión se avisa y se borran.
+   ════════════════════════════════════════════════════════════════════════════ */
+var CalevaSync = (function () {
+  'use strict';
+  function clon(o) { return o === undefined ? undefined : JSON.parse(JSON.stringify(o)); }
+  function can(o) {
+    if (Array.isArray(o)) return '[' + o.map(can).join(',') + ']';
+    if (o && typeof o === 'object') return '{' + Object.keys(o).filter(function (k) { return o[k] !== undefined; }).sort().map(function (k) { return JSON.stringify(k) + ':' + can(o[k]); }).join(',') + '}';
+    return o === undefined ? 'null' : JSON.stringify(o);
+  }
+  function igual(a, b) { return can(a) === can(b); }
+  function uuid() {
+    try { if (crypto && crypto.randomUUID) return crypto.randomUUID().replace(/-/g, ''); } catch (e) {}
+    return 'op' + Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
+  }
+
+  /* ---------- fusión de tres vías ---------- */
+  var CLAVES = ['id', 'factura', 'pedido', 'numero'];
+  function claveArr(listas) {
+    var todos = [].concat.apply([], listas.filter(Array.isArray));
+    if (!todos.length || todos.some(function (x) { return !x || typeof x !== 'object' || Array.isArray(x); })) return null;
+    for (var i = 0; i < CLAVES.length; i++) {
+      var k = CLAVES[i];
+      var okK = listas.every(function (L) {
+        if (!Array.isArray(L)) return true;
+        var vis = {}; return L.every(function (x) { var v = x[k]; if (v == null || v === '' || vis[v]) return false; vis[v] = 1; return true; });
+      });
+      if (okK) return k;
+    }
+    return null;
+  }
+  function escalares(L) { return Array.isArray(L) && L.every(function (x) { return x == null || typeof x !== 'object'; }); }
+  function fusion(b, m, s, ruta, conf, pref) {
+    if (igual(m, s)) return clon(m);
+    if (igual(m, b)) return clon(s);
+    if (igual(s, b)) return clon(m);
+    var esObj = function (x) { return x && typeof x === 'object' && !Array.isArray(x); };
+    if (esObj(m) && esObj(s) && (b == null || esObj(b))) {
+      b = b || {}; var r = {}, ks = {};
+      [b, m, s].forEach(function (o) { Object.keys(o).forEach(function (k) { ks[k] = 1; }); });
+      Object.keys(ks).forEach(function (k) {
+        var v = fusion(b[k], m[k], s[k], ruta + '.' + k, conf, pref);
+        if (v !== undefined) r[k] = v;
+      });
+      return r;
+    }
+    if (Array.isArray(m) && Array.isArray(s) && (b == null || Array.isArray(b))) {
+      b = b || [];
+      if (escalares(m) && escalares(s) && escalares(b)) {   /* conjunto: se suma lo agregado y se quita lo quitado */
+        var cb = b.map(can), cm = m.map(can), cs = s.map(can), out = [], vis = {};
+        s.forEach(function (x, i) { if (cb.indexOf(cs[i]) >= 0 && cm.indexOf(cs[i]) < 0) return; if (!vis[cs[i]]) { vis[cs[i]] = 1; out.push(clon(x)); } });
+        m.forEach(function (x, i) { if (cb.indexOf(cm[i]) < 0 && !vis[cm[i]]) { vis[cm[i]] = 1; out.push(clon(x)); } });
+        return out;
+      }
+      var k = claveArr([b, m, s]);
+      if (k) {
+        var mapa = function (L) { var o = {}; L.forEach(function (x) { o[x[k]] = x; }); return o; };
+        var B = mapa(b), M = mapa(m), S = mapa(s), orden = [], vist = {};
+        s.concat(m).forEach(function (x) { if (!vist[x[k]]) { vist[x[k]] = 1; orden.push(x[k]); } });
+        Object.keys(B).forEach(function (id) { if (!vist[id]) { vist[id] = 1; orden.push(id); } });
+        var res = [];
+        orden.forEach(function (id) {
+          var en = ruta + '[' + k + '=' + id + ']', bb = B[id], mm = M[id], ss = S[id];
+          if (mm && ss) { res.push(fusion(bb, mm, ss, en, conf, pref)); return; }
+          if (mm && !ss) {
+            if (!bb) { res.push(clon(mm)); return; }               /* lo agregué yo */
+            if (igual(mm, bb)) return;                              /* lo borró el otro y yo no lo toqué */
+            conf.push({ ruta: en, tipo: 'editado-borrado', mio: mm, suyo: null });
+            if (pref !== 'suyo') res.push(clon(mm)); return;
+          }
+          if (ss && !mm) {
+            if (!bb) { res.push(clon(ss)); return; }               /* lo agregó el otro */
+            if (igual(ss, bb)) return;                              /* lo borré yo */
+            conf.push({ ruta: en, tipo: 'borrado-editado', mio: null, suyo: ss });
+            if (pref === 'suyo') res.push(clon(ss)); return;
+          }
+        });
+        return res;
+      }
+    }
+    conf.push({ ruta: ruta || '(documento)', tipo: 'ambos', base: b, mio: m, suyo: s });
+    return clon(pref === 'suyo' ? s : m);
+  }
+
+  /* ---------- documento sincronizado ---------- */
+  function Doc(o) {
+    this.o = o;                 // {tabla, id, nombre, rest(), headers(), puedeEscribir(), usuario(), alEstado(st,info), alFusion(data), alConflicto(info), alPendienteRecuperado(data)}
+    this.base = null; this.version = null; this.cargado = false;
+    this.estado = 'sin-leer'; this.error = '';
+    this.enviando = false; this.pendiente = null; this.esperan = []; this.fallos = 0; this._t = null;
+  }
+  Doc.prototype.clavePend = function () { return 'caleva_pend_' + this.o.tabla + '_' + this.o.id + '_' + (this.o.usuario() || 'anon'); };
+  Doc.prototype.poner = function (st, info) { this.estado = st; this.error = info || ''; try { this.o.alEstado && this.o.alEstado(st, info, this); } catch (e) {} };
+
+  Doc.prototype.leer = function () {
+    var self = this, url = this.o.rest() + this.o.tabla + '?id=eq.' + this.o.id + '&select=data,version';
+    this.poner('leyendo');
+    return fetch(url, { headers: this.o.headers(), cache: 'no-store' }).then(function (r) {
+      if (r.status === 401 || r.status === 403) { self.poner('error', 'denegado'); return { estado: 'denegado', status: r.status }; }
+      if (!r.ok) { self.poner('error', 'servidor ' + r.status); return { estado: 'servidor', status: r.status }; }
+      return r.json().then(function (rows) {
+        if (!Array.isArray(rows)) { self.poner('error', 'respuesta inválida'); return { estado: 'servidor', status: r.status }; }
+        var row = rows[0];
+        if (!row) { self.poner('vacio'); return { estado: 'vacio', sinFila: true }; }
+        var d = row.data;
+        self.version = +row.version || 0;
+        if (!d || typeof d !== 'object' || !Object.keys(d).length) { self.base = d || {}; self.cargado = true; self.poner('vacio'); return { estado: 'vacio', version: self.version }; }
+        self.base = clon(d); self.cargado = true; self.poner('confirmado');
+        return { estado: 'ok', data: clon(d), version: self.version };
+      }, function () { self.poner('error', 'respuesta inválida'); return { estado: 'servidor', status: r.status }; });
+    }, function (e) { self.poner('error', 'sin conexión'); return { estado: 'red', error: String(e && e.message || e) }; });
+  };
+
+  /* recupera una copia pendiente que no llegó al servidor (misma persona, mismo documento) */
+  Doc.prototype.pendienteGuardado = function () {
+    try { var x = JSON.parse(localStorage.getItem(this.clavePend()) || 'null'); return x && x.data ? x : null; } catch (e) { return null; }
+  };
+  Doc.prototype.guardarPendLocal = function (data) {
+    try { localStorage.setItem(this.clavePend(), JSON.stringify({ data: data, version: this.version, en: new Date().toISOString() })); } catch (e) {}
+  };
+  Doc.prototype.borrarPendLocal = function () { try { localStorage.removeItem(this.clavePend()); } catch (e) {} };
+  Doc.prototype.hayPendiente = function () { return !!(this.enviando || this.pendiente); };
+
+  /* pide guardar el estado actual: se envía cuando no hay otro envío en curso */
+  Doc.prototype.guardar = function (data) {
+    if (!this.cargado) { this.poner('error', 'no leído'); return Promise.reject(Error('El documento no se ha leído del servidor: no se guarda nada.')); }
+    if (!this.o.puedeEscribir()) return Promise.resolve(false);
+    var self = this;
+    if (igual(data, this.base) && !this.enviando) { if (!this.pendiente) this.poner('confirmado'); return Promise.resolve(true); }
+    this.pendiente = clon(data); this.guardarPendLocal(this.pendiente);
+    if (this.enviando) { this.poner('pendiente'); return this.esperar(); }
+    var p = this.esperar(); this._enviar(); return p;
+  };
+  Doc.prototype.esperar = function () {
+    var self = this;
+    if (!this.enviando && !this.pendiente) return Promise.resolve(true);
+    return new Promise(function (ok, mal) { self.esperan.push({ ok: ok, mal: mal }); });
+  };
+  Doc.prototype._resolver = function (err) {
+    var L = this.esperan.splice(0);
+    L.forEach(function (w) { err ? w.mal(err) : w.ok(true); });
+  };
+  Doc.prototype._enviar = function () {
+    var self = this; clearTimeout(this._t);
+    if (this.enviando || !this.pendiente) return;
+    var data = this.pendiente, v = this.version, op = uuid();
+    if (igual(data, this.base)) { this.pendiente = null; this.borrarPendLocal(); this.poner('confirmado'); this._resolver(); return; }
+    this.pendiente = null; this.enviando = true; this.poner('enviando');
+    var h = this.o.headers(); h['Prefer'] = 'return=representation';
+    var url = this.o.rest() + this.o.tabla + '?id=eq.' + this.o.id + '&version=eq.' + v + '&select=version';
+    fetch(url, { method: 'PATCH', headers: h, body: JSON.stringify({ data: data, version: v + 1, ultima_op: op }) })
+      .then(function (r) {
+        return r.text().then(function (t) { var j = null; try { j = t ? JSON.parse(t) : null; } catch (e) {} return { r: r, j: j }; });
+      })
+      .then(function (x) {
+        self.enviando = false;
+        var r = x.r, j = x.j;
+        if (r.ok && Array.isArray(j) && j.length === 1) {
+          self.version = +j[0].version || (v + 1); self.base = clon(data); self.fallos = 0;
+          if (self.pendiente && !igual(self.pendiente, self.base)) { self._enviar(); return; }
+          self.pendiente = null; self.borrarPendLocal(); self.poner('confirmado', new Date().toTimeString().slice(0, 5)); self._resolver();
+          return;
+        }
+        var msg = (j && (j.message || j.msg)) || '';
+        if ((r.ok && Array.isArray(j) && !j.length) || r.status === 409 || /CONFLICTO_VERSION/.test(msg)) { self.pendiente = self.pendiente || data; return self._conflicto(); }
+        if (r.status === 401 || r.status === 403) { self.pendiente = self.pendiente || data; self.poner('error', 'sin permiso o sesión vencida'); self._resolver(Error('Sin permiso para guardar o sesión vencida')); return; }
+        self.pendiente = self.pendiente || data;
+        if (r.status >= 500) return self._reintentar('servidor ' + r.status);
+        self.poner('error', msg || ('rechazado ' + r.status)); self._resolver(Error(msg || ('El servidor rechazó el cambio (' + r.status + ')')));
+      }, function (e) { self.enviando = false; self.pendiente = self.pendiente || data; self._reintentar('sin conexión'); });
+  };
+  Doc.prototype._reintentar = function (motivo) {
+    var self = this; this.fallos++;
+    this.poner('error', motivo + ' · se reintenta solo');
+    this._t = setTimeout(function () { self._enviar(); }, Math.min(30000, 2000 * this.fallos));
+  };
+  /* otra persona guardó antes: se lee su versión y se combinan los cambios */
+  Doc.prototype._conflicto = function () {
+    var self = this, mio = this.pendiente, base = this.base;
+    this.poner('conflicto');
+    return fetch(this.o.rest() + this.o.tabla + '?id=eq.' + this.o.id + '&select=data,version', { headers: this.o.headers(), cache: 'no-store' })
+      .then(function (r) { if (!r.ok) throw Error('servidor ' + r.status); return r.json(); })
+      .then(function (rows) {
+        var row = rows && rows[0];
+        if (!row) throw Error('Sin acceso al documento');
+        if ((+row.version || 0) === self.version) {   /* misma versión y 0 filas: la escritura fue rechazada por permisos */
+          self.poner('error', 'sin permiso para guardar'); self._resolver(Error('El servidor no aceptó el cambio: sin permiso para modificar este documento'));
+          return;
+        }
+        var suyo = row.data, conf = [], r = fusion(base, mio, suyo, '', conf);
+        if (!conf.length) {
+          self.base = clon(suyo); self.version = +row.version || 0; self.pendiente = r;
+          try { self.o.alFusion && self.o.alFusion(clon(r), { automatica: true }); } catch (e) {}
+          self._enviar(); return;
+        }
+        var resolver = function (pref) {
+          var c2 = [], r2 = pref === 'descartar' ? clon(suyo) : fusion(base, mio, suyo, '', c2, pref);
+          self.base = clon(suyo); self.version = +row.version || 0; self.pendiente = igual(r2, suyo) ? null : r2;
+          try { self.o.alFusion && self.o.alFusion(clon(r2), { pref: pref, conflictos: conf }); } catch (e) {}
+          if (self.pendiente) self._enviar(); else { self.borrarPendLocal(); self.poner('confirmado'); self._resolver(); }
+        };
+        if (self.o.alConflicto) self.o.alConflicto({ conflictos: conf, mio: clon(mio), suyo: clon(suyo), resolver: resolver });
+        else resolver('mio');
+      })
+      .catch(function (e) { self._reintentar('conflicto: ' + (e.message || e)); });
+  };
+
+  /* ---------- indicador de estado (pendiente · enviando · confirmado · error) ---------- */
+  var TXT = { 'sin-leer': 'Sin leer', leyendo: 'Leyendo…', vacio: 'Documento vacío', confirmado: 'Guardado en el servidor', pendiente: 'Cambios pendientes', enviando: 'Enviando…', conflicto: 'Combinando cambios…', error: 'Error' };
+  function indicador(docs, opciones) {
+    opciones = opciones || {};
+    var el = document.getElementById('cvSync');
+    if (!el) {
+      el = document.createElement('div'); el.id = 'cvSync'; el.setAttribute('role', 'status'); el.setAttribute('aria-live', 'polite');
+      el.style.cssText = 'position:fixed;left:14px;bottom:14px;z-index:650;display:flex;gap:8px;align-items:center;padding:7px 12px;border-radius:999px;font:600 12px/1.2 Inter,Barlow,Arial,sans-serif;background:#fff;color:#1d2433;border:1px solid #d9e0ea;box-shadow:0 4px 18px rgba(0,30,61,.12)';
+      document.body.appendChild(el);
+    }
+    var pinta = function () {
+      var st = 'confirmado', info = '', n = 0;
+      docs.forEach(function (d) {
+        if (d.pendiente || d.enviando) n++;
+        var orden = ['confirmado', 'vacio', 'sin-leer', 'leyendo', 'pendiente', 'enviando', 'conflicto', 'error'];
+        if (orden.indexOf(d.estado) > orden.indexOf(st)) { st = d.estado; info = d.error; }
+      });
+      var color = { confirmado: '#2e8b57', pendiente: '#e0a100', enviando: '#2f6fb5', conflicto: '#e07020', error: '#c0392b', leyendo: '#2f6fb5', vacio: '#8a94a6', 'sin-leer': '#8a94a6' }[st] || '#8a94a6';
+      el.innerHTML = '';
+      var dot = document.createElement('span'); dot.style.cssText = 'width:9px;height:9px;border-radius:50%;background:' + color; el.appendChild(dot);
+      var tx = document.createElement('span');
+      tx.textContent = TXT[st] + (n && st !== 'confirmado' ? ' (' + n + ')' : '') + (info ? ' · ' + info : '');
+      el.appendChild(tx);
+      el.dataset.estado = st;
+      if (st === 'error' && opciones.reintentar) {
+        var b = document.createElement('button'); b.type = 'button'; b.textContent = 'Reintentar';
+        b.style.cssText = 'border:0;background:#c0392b;color:#fff;border-radius:999px;padding:3px 9px;font:inherit;cursor:pointer';
+        b.onclick = opciones.reintentar; el.appendChild(b);
+      }
+    };
+    pinta();
+    return pinta;
+  }
+  /* avisar al cerrar la pestaña con cambios sin confirmar */
+  function protegerSalida(docs) {
+    window.addEventListener('beforeunload', function (e) {
+      if (docs().some(function (d) { return d.hayPendiente(); })) { e.preventDefault(); e.returnValue = 'Hay cambios que el servidor aún no confirmó.'; return e.returnValue; }
+    });
+  }
+  /* cerrar sesión / cambio de usuario: borrar copias locales de datos */
+  function limpiarLocal(prefijos, uidActual) {
+    try {
+      var borrar = [];
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (prefijos.some(function (p) { return k.indexOf(p) === 0; })) borrar.push(k);
+        else if (k.indexOf('caleva_pend_') === 0 && (!uidActual || k.slice(-uidActual.length) !== uidActual)) borrar.push(k);
+      }
+      borrar.forEach(function (k) { localStorage.removeItem(k); });
+    } catch (e) {}
+  }
+  function descargarJSON(nombre, obj) {
+    var a = document.createElement('a'), u = URL.createObjectURL(new Blob([JSON.stringify(obj, null, 1)], { type: 'application/json' }));
+    a.href = u; a.download = nombre; document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(u); a.remove(); }, 1500);
+  }
+  /* ventana de conflicto: lista lo que chocó y deja elegir */
+  function ventanaConflicto(info, titulo) {
+    var ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;z-index:900;background:rgba(10,20,35,.55);display:flex;align-items:center;justify-content:center;padding:18px';
+    var bx = document.createElement('div');
+    bx.style.cssText = 'background:#fff;color:#1d2433;max-width:620px;width:100%;border-radius:14px;padding:18px 20px;font:14px/1.45 Inter,Barlow,Arial,sans-serif;max-height:85vh;overflow:auto';
+    var h = document.createElement('h3'); h.textContent = titulo || 'Otra persona cambió los mismos datos'; h.style.margin = '0 0 8px'; bx.appendChild(h);
+    var p = document.createElement('p'); p.textContent = 'Mientras editaba, otra persona guardó cambios en el mismo documento. Los cambios que no chocan ya se combinaron. Estos datos fueron modificados por ambos:'; bx.appendChild(p);
+    var ul = document.createElement('ul'); ul.style.cssText = 'font:12px/1.4 ui-monospace,Consolas,monospace;background:#f5f7fa;border-radius:8px;padding:8px 8px 8px 26px;max-height:200px;overflow:auto';
+    info.conflictos.slice(0, 40).forEach(function (c) { var li = document.createElement('li'); li.textContent = c.ruta + (c.tipo === 'editado-borrado' ? ' (usted lo editó; la otra persona lo borró)' : c.tipo === 'borrado-editado' ? ' (usted lo borró; la otra persona lo editó)' : ''); ul.appendChild(li); });
+    bx.appendChild(ul);
+    var acc = document.createElement('div'); acc.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;margin-top:12px';
+    var boton = function (t, f, prim) { var b = document.createElement('button'); b.type = 'button'; b.textContent = t; b.style.cssText = 'border:1px solid #c9d1dd;border-radius:8px;padding:8px 12px;font:inherit;cursor:pointer;' + (prim ? 'background:#0f2a4a;color:#fff;border-color:#0f2a4a' : 'background:#fff'); b.onclick = f; acc.appendChild(b); };
+    var fin = function (pref) { ov.remove(); info.resolver(pref); };
+    boton('Descargar mis cambios (JSON)', function () { descargarJSON('mis_cambios_' + new Date().toISOString().slice(0, 16).replace(/[:T]/g, '') + '.json', info.mio); });
+    boton('Usar los del servidor', function () { fin('suyo'); });
+    boton('Conservar los míos en esos datos', function () { fin('mio'); }, true);
+    bx.appendChild(acc); ov.appendChild(bx); document.body.appendChild(ov);
+  }
+
+  return { clon: clon, can: can, igual: igual, uuid: uuid, fusion: function (b, m, s, pref) { var c = []; var r = fusion(b, m, s, '', c, pref); return { resultado: r, conflictos: c }; },
+           Doc: Doc, indicador: indicador, protegerSalida: protegerSalida, limpiarLocal: limpiarLocal, descargarJSON: descargarJSON, ventanaConflicto: ventanaConflicto };
+})();
+
+</script>
+<script id="xlsx-lector">
+/* ════════════════════════════════════════════════════════════════════════════
+   XlsxLector · lector mínimo de .xlsx/.xlsm SIN dependencias externas
+   (auditoría 09-11-2026, hallazgo 13). Reemplaza la carga de SheetJS desde cdnjs,
+   que la política de seguridad del sitio bloquea. Código propio, revisable:
+     · descomprime el ZIP con DecompressionStream('deflate-raw') del navegador;
+     · lee workbook.xml (nombres de hoja), sharedStrings.xml y cada hoja;
+     · devuelve { SheetNames:[...], hojas:{ nombre: [[celda,…],…] } }.
+   Las fechas llegan como número de serie de Excel (como raw:true de SheetJS);
+   el importador ya las convierte. No ejecuta macros ni fórmulas: usa el valor
+   guardado en la celda.
+   ════════════════════════════════════════════════════════════════════════════ */
+var XlsxLector = (function () {
+  'use strict';
+  function u16(d, o) { return d.getUint16(o, true); }
+  function u32(d, o) { return d.getUint32(o, true); }
+  function entradas(buf) {
+    var d = new DataView(buf), n = buf.byteLength, eocd = -1;
+    for (var i = n - 22; i >= Math.max(0, n - 65557); i--) if (u32(d, i) === 0x06054b50) { eocd = i; break; }
+    if (eocd < 0) throw Error('El archivo no es un .xlsx válido (ZIP sin directorio)');
+    var cant = u16(d, eocd + 10), off = u32(d, eocd + 16), out = {}, dec = new TextDecoder();
+    for (var k = 0; k < cant; k++) {
+      if (u32(d, off) !== 0x02014b50) throw Error('ZIP dañado');
+      var metodo = u16(d, off + 10), comp = u32(d, off + 20), ln = u16(d, off + 28), le = u16(d, off + 30), lc = u16(d, off + 32), loc = u32(d, off + 42);
+      var nombre = dec.decode(new Uint8Array(buf, off + 46, ln));
+      var lnL = u16(d, loc + 26), leL = u16(d, loc + 28), ini = loc + 30 + lnL + leL;
+      out[nombre] = { metodo: metodo, datos: new Uint8Array(buf, ini, comp) };
+      off += 46 + ln + le + lc;
+    }
+    return out;
+  }
+  function inflar(e) {
+    if (e.metodo === 0) return Promise.resolve(e.datos);
+    if (e.metodo !== 8) return Promise.reject(Error('Compresión no soportada (' + e.metodo + ')'));
+    if (typeof DecompressionStream === 'undefined') return Promise.reject(Error('Este navegador no puede leer .xlsx: guarde la plantilla como CSV.'));
+    var ds = new DecompressionStream('deflate-raw');
+    var w = ds.writable.getWriter(); w.write(e.datos); w.close();
+    return new Response(ds.readable).arrayBuffer().then(function (b) { return new Uint8Array(b); });
+  }
+  function texto(ent, nombre) {
+    var e = ent[nombre]; if (!e) return Promise.resolve(null);
+    return inflar(e).then(function (u) { return new TextDecoder('utf-8').decode(u); });
+  }
+  function xml(s) { return new DOMParser().parseFromString(s, 'application/xml'); }
+  function hijos(n, tag) { return [].slice.call(n.getElementsByTagNameNS('*', tag)); }
+  function col(ref) { var m = /^([A-Z]+)/.exec(ref || ''), c = 0; if (!m) return -1; for (var i = 0; i < m[1].length; i++) c = c * 26 + (m[1].charCodeAt(i) - 64); return c - 1; }
+  function fila(ref) { var m = /(\d+)$/.exec(ref || ''); return m ? +m[1] - 1 : -1; }
+  function txtSi(si) { return hijos(si, 't').map(function (t) { return t.textContent; }).join(''); }
+
+  function leer(buf) {
+    var ent = entradas(buf);
+    return Promise.all([texto(ent, 'xl/workbook.xml'), texto(ent, 'xl/_rels/workbook.xml.rels'), texto(ent, 'xl/sharedStrings.xml')]).then(function (r) {
+      if (!r[0]) throw Error('El archivo no tiene libro de Excel (xl/workbook.xml)');
+      var wb = xml(r[0]), rels = r[1] ? xml(r[1]) : null, ss = r[2] ? hijos(xml(r[2]), 'si').map(txtSi) : [];
+      var destino = {};
+      if (rels) hijos(rels, 'Relationship').forEach(function (x) { destino[x.getAttribute('Id')] = x.getAttribute('Target'); });
+      var hojas = hijos(wb, 'sheet').map(function (s) {
+        var rid = s.getAttribute('r:id') || s.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id');
+        var t = destino[rid] || ''; t = t.replace(/^\/?xl\//, ''); t = t.charAt(0) === '/' ? t.slice(1) : t;
+        return { nombre: s.getAttribute('name'), ruta: 'xl/' + t };
+      });
+      var out = { SheetNames: hojas.map(function (h) { return h.nombre; }), hojas: {} };
+      return Promise.all(hojas.map(function (h) {
+        return texto(ent, h.ruta).then(function (s) {
+          var M = [];
+          if (s) hijos(xml(s), 'c').forEach(function (c) {
+            var ref = c.getAttribute('r'), t = c.getAttribute('t'), v = hijos(c, 'v')[0], val = '';
+            if (t === 's') val = v ? (ss[+v.textContent] || '') : '';
+            else if (t === 'inlineStr') { var is = hijos(c, 'is')[0]; val = is ? txtSi(is) : ''; }
+            else if (t === 'b') val = v ? v.textContent === '1' : '';
+            else if (t === 'str' || t === 'e') val = v ? v.textContent : '';
+            else val = v ? (isNaN(+v.textContent) ? v.textContent : +v.textContent) : '';
+            var fi = fila(ref), co = col(ref); if (fi < 0 || co < 0) return;
+            while (M.length <= fi) M.push([]);
+            var F = M[fi]; while (F.length < co) F.push(''); F[co] = val;
+          });
+          var ancho = M.reduce(function (a, f) { return Math.max(a, f.length); }, 0);
+          M.forEach(function (f) { while (f.length < ancho) f.push(''); });
+          out.hojas[h.nombre] = M;
+        });
+      })).then(function () { return out; });
+    });
+  }
+  return { leer: leer };
+})();
+
+</script>
+<script id="nomina-integridad">
+/* ════════════════════════════════════════════════════════════════════════════
+   Nómina · integridad (auditoría 09-11-2026). Lo inyecta el paso 10 de
+   aplicar_cristal_nomina.py, al final del <body>, junto con caleva_sync.js.
+
+   1) Arranque seguro: en la nube no se muestra ni se usa ninguna copia local antes
+      de comprobar la sesión y el rol en el servidor. Una lectura fallida (red,
+      error del servidor, acceso denegado) NUNCA escribe ni migra: se muestra el
+      error con «Reintentar». Un documento vacío solo se inicializa a pedido del
+      administrador.
+   2) Guardado con versión (CalevaSync): serializado, fusión de cambios ajenos,
+      aviso de conflicto y estado visible (pendiente · enviando · confirmado · error).
+   3) Cierres: al aprobar y al pagar se congela una copia del cálculo (personas,
+      cuentas, conceptos, tasa, redondeo, totales y versión del cálculo). El
+      historial, los recibos, el TXT del banco y el Pago Móvil de un período
+      cerrado salen de esa copia: un aumento, un cambio de régimen o de cuenta o una
+      baja posteriores no cambian un período cerrado. En la nube, aprobar, pagar,
+      devolver a borrador, reabrir, ajustar y restaurar son operaciones del servidor.
+   4) Períodos cerrados antiguos (sin copia): se marcan «sin copia de cierre» y
+      siguen calculándose en vivo; el administrador los congela solo después de
+      conciliarlos con los comprobantes (no se inventan valores).
+   5) Respaldo y restauración validados; caché local fuera; importación .xlsx local.
+   ════════════════════════════════════════════════════════════════════════════ */
+var Integridad = (function () {
+  'use strict';
+  var CALC_VERSION = 'nomina-calc-2026-11-09';
+  var S = CalevaSync, doc = null, pintarEstado = null, enTransicion = false;
+  var nube = function () { return Auth.cloud(); };
+
+  /* ---------- 1. arranque ---------- */
+  function vista(html) { var v = document.getElementById('view'); if (v) v.innerHTML = html; }
+  function msgCarga(t) { vista('<div class="empty" style="padding:48px 12px"><div class="ic">⏳</div>' + esc(t) + '</div>'); }
+  function msgError(titulo, detalle, conReintento) {
+    vista('<div class="card" style="max-width:640px;margin:30px auto;border-left:4px solid #c0392b"><h3>' + esc(titulo) + '</h3>' +
+      '<div class="note warn">' + esc(detalle) + '</div>' +
+      '<p style="font-size:12.5px;color:var(--txt3)">Por seguridad no se muestra ni se guarda ninguna copia local hasta poder leer la nómina del servidor.</p>' +
+      (conReintento ? '<div class="bar"><button class="btn p" onclick="Integridad.arrancarNube()">↻ Reintentar</button></div>' : '') + '</div>');
+  }
+  function nuevoDoc() {
+    doc = new S.Doc({
+      tabla: SB.table, id: 1, nombre: 'Nómina',
+      rest: function () { return Cloud.rest(); }, headers: function () { return Cloud.headers(); },
+      puedeEscribir: function () { return Auth.puedeEscribir(); },
+      usuario: function () { return Auth.uid() || ''; },
+      alEstado: function () { if (pintarEstado) pintarEstado(); Cloud.dot({ confirmado: 'ok', enviando: 'sync', pendiente: 'sync', conflicto: 'sync', leyendo: 'sync', error: 'err' }[doc.estado] || ''); if (doc.estado === 'confirmado') enviarAuditoria(); },
+      alFusion: function (data, info) {
+        DB = migrar(data); if (!DB.periodos.find(function (p) { return p.id === PER; })) PER = DB.periodos[DB.periodos.length - 1].id;
+        render(); toast(info && info.automatica ? 'Se combinaron cambios de otra persona' : 'Conflicto resuelto', 'ok');
+      },
+      alConflicto: function (info) { S.ventanaConflicto(info, 'Nómina: otra persona cambió los mismos datos'); }
+    });
+    pintarEstado = S.indicador([doc], { reintentar: function () { doc.fallos = 0; doc._enviar(); } });
+    return doc;
+  }
+  function arrancarNube() {
+    msgCarga('Comprobando acceso…');
+    return Auth.fetchPerfil().then(function () {
+      if (!Auth.tieneAcceso()) { DB = null; showNoAccess(); return; }
+      S.limpiarLocal([KEY], Auth.uid());          // datos de versiones anteriores o de otro usuario
+      aplicarRol();
+      if (!doc) nuevoDoc();
+      msgCarga('Leyendo la nómina del servidor…');
+      return doc.leer().then(function (res) {
+        if (res.estado === 'denegado') {
+          return Auth.refresh().then(function (ok) { if (ok) return arrancarNube(); DB = null; showLogin(); });
+        }
+        if (res.estado === 'red') { DB = null; msgError('Sin conexión con el servidor', 'No se pudo leer la nómina (' + (res.error || 'red') + ').', true); return; }
+        if (res.estado === 'servidor') { DB = null; msgError('El servidor respondió con error', 'No se pudo leer la nómina (HTTP ' + res.status + ').', true); return; }
+        if (res.estado === 'vacio') { DB = null; return pantallaVacio(res); }
+        DB = migrar(res.data);
+        var pend = doc.pendienteGuardado();
+        if (pend && !S.igual(pend.data, res.data) && Auth.puedeEscribir()) ofrecerPendiente(pend, res);
+        if (!DB.periodos.length) DB.periodos = [nuevoPeriodo()];
+        PER = DB.periodos[DB.periodos.length - 1].id;
+        render();
+        if (DB.config.tasaAuto) fetchTasa(0);
+        avisoLegado();
+      });
+    });
+  }
+  function pantallaVacio(res) {
+    if (!Auth.esAdmin()) { msgError('La nómina no tiene datos', 'El documento del servidor está vacío o su usuario no puede leerlo. Consulte al administrador.', true); return; }
+    vista('<div class="card" style="max-width:640px;margin:30px auto"><h3>La nómina del servidor está vacía</h3>' +
+      '<div class="note">No hay trabajadores ni períodos en el servidor. Nada se cargó ni se migró automáticamente.</div>' +
+      '<div class="bar"><button class="btn p" onclick="Integridad.inicializarVacio()">Iniciar una nómina vacía</button>' +
+      '<button class="btn" onclick="Integridad.abrirRestaurar()">Restaurar desde un respaldo…</button></div></div>');
+  }
+  function inicializarVacio() {
+    if (!Auth.esAdmin() || !confirm('¿Iniciar una nómina vacía en el servidor? Solo se crea la configuración; no se copia ningún dato local.')) return;
+    var d = { version: 2, config: configNeutra(), coordinadores: [], trabajadores: [], prestamos: [], periodos: [] };
+    if (doc.base == null) doc.base = {};
+    if (doc.version == null) doc.version = 0;
+    doc.cargado = true;
+    DB = migrar(d); DB.periodos = [nuevoPeriodo()]; PER = DB.periodos[0].id;
+    doc.guardar(DB).then(function () { render(); toast('Nómina iniciada'); }, function (e) { toast(e.message, 'err'); });
+  }
+  function configNeutra() {
+    return { empresa: '', rif: '', cuentaDebitar: '', emailNotif: '', tasaBCV: 0, tasaFecha: hoy(), tasaAuto: true,
+      diasMesLottt: 30, diasMesFreelance: 20, diasQuincena: 15, sueldoBaseUSD: 0, sueldoBaseBsQuincena: 0, ticketQuincenalUSD: 0,
+      ticketTransporteDefault: 0, costoPagoMovil: 0, maxPagoMovil: 0, bancoPagadorPM: '', trabPorCoordinador: 5,
+      pctIVA: 0.16, pctRetIVA: 0.75, pctISLR: 0.03, bncDescripcion: 'Nomina', bncRelleno: '0000000000', bncIndicador: 'SNN00', bncRedondear: true };
+  }
+  function ofrecerPendiente(pend, res) {
+    setTimeout(function () {
+      if (!confirm('Hay cambios suyos de ' + String(pend.en || '').slice(0, 16).replace('T', ' ') + ' que el servidor no llegó a confirmar.\n\n' +
+                   'Aceptar: combinarlos con la versión actual del servidor y enviarlos.\nCancelar: descargarlos en un archivo y descartarlos.')) {
+        S.descargarJSON('nomina_cambios_sin_confirmar.json', pend.data); doc.borrarPendLocal(); return;
+      }
+      var base = pend.version === res.version ? res.data : res.data;
+      var f = S.fusion(res.data, pend.data, res.data);
+      DB = migrar(f.resultado); render(); doc.guardar(DB).then(function () { toast('Cambios recuperados y guardados'); }, function (e) { toast(e.message, 'err'); });
+    }, 300);
+  }
+  function arrancar() {
+    if (!nube()) { load(); render(); if (DB.config.tasaAuto) fetchTasa(0); return; }
+    S.protegerSalida(function () { return doc ? [doc] : []; });
+    msgCarga('Comprobando sesión…');
+    Auth.loadSession();
+    if (!Auth.session || Auth.expired()) Auth.refresh().then(function (ok) { ok ? arrancarNube() : showLogin(); });
+    else arrancarNube();
+  }
+
+  /* ---------- 2. guardado ---------- */
+  function guardarNube() {
+    if (!nube() || !Auth.puedeEscribir() || enTransicion) return;
+    if (!doc || !doc.cargado || !DB) { toast('No se guardó: la nómina no se ha leído del servidor', 'err'); return; }
+    doc.guardar(DB).catch(function (e) { toast('No se guardó: ' + e.message, 'err'); });
+  }
+  function esperarGuardado() { return doc ? doc.esperar() : Promise.resolve(true); }
+  function enviarAuditoria() {
+    var L = window.__nomAudPend || []; if (!L.length || !nube()) return;
+    window.__nomAudPend = [];
+    L.forEach(function (e) {
+      fetch(Cloud.rest() + 'rpc/app_audit_write', { method: 'POST', headers: Cloud.headers(), body: JSON.stringify({ p_app: 'nomina', p_action: e.action, p_entity: e.entity || null, p_entity_id: null, p_before: e.before || null, p_after: e.after || {} }) }).catch(function () {});
+    });
+  }
+
+  /* ---------- 3. cierres ---------- */
+  var RECORTE_T = ['historialLaboral', 'observaciones', 'direccion', 'emailPersonal', 'fechaNacimiento', 'estadoCivil', 'cargasFamiliares', 'nroIVSS', 'nroFAOV'];
+  function tCopia(t) { var o = {}; Object.keys(t).forEach(function (k) { if (RECORTE_T.indexOf(k) < 0 && (t[k] === null || typeof t[k] !== 'object')) o[k] = t[k]; }); return o; }
+  function compactar(R) {
+    var filas = R.filas.map(function (f) {
+      var o = {}; Object.keys(f).forEach(function (k) {
+        if (k === 't') o.t = tCopia(f.t);
+        else if (k === 'L') o.L = S.clon(f.L);
+        else if (k === 'cuotas') o.cuotas = (f.cuotas || []).map(function (x) { return { prId: x.pr && x.pr.id, descripcion: x.pr && x.pr.descripcion, cuota: x.cuota }; });
+        else if (f[k] === null || typeof f[k] !== 'object') o[k] = f[k];
+      });
+      return o;
+    });
+    var grupos = R.grupos.map(function (g) {
+      var o = {}; Object.keys(g).forEach(function (k) { if (k !== 'filas' && (g[k] === null || typeof g[k] !== 'object')) o[k] = g[k]; });
+      o.idx = g.filas.map(function (f) { return R.filas.indexOf(f); }); return o;
+    });
+    var plano = {}; ['tasa', 'ticketAlimBs', 'diarioTicketBs', 'convDepUSD', 'granUSD', 'granBs', 'granTotalUSD', 'granTotalBs'].forEach(function (k) { plano[k] = R[k]; });
+    return { filas: filas, grupos: grupos, tot: S.clon(R.tot), c: S.clon(R.c), plano: plano };
+  }
+  function rehidratar(p, C) {
+    var filas = C.filas.map(function (f) { var o = S.clon(f); o.cuotas = (o.cuotas || []).map(function (x) { return { pr: { id: x.prId, descripcion: x.descripcion }, cuota: x.cuota }; }); return o; });
+    var grupos = C.grupos.map(function (g) { var o = S.clon(g); o.filas = (g.idx || []).map(function (i) { return filas[i]; }); delete o.idx; return o; });
+    var R = { p: p, c: S.clon(C.c), filas: filas, tot: S.clon(C.tot), grupos: grupos, congelado: true };
+    Object.keys(C.plano).forEach(function (k) { R[k] = C.plano[k]; });
+    return R;
+  }
+  function resumen(p, R) {
+    var r2 = function (n) { return Math.round((+n || 0) * 100) / 100; };
+    var filas = R.filas.map(function (f) { return { tid: f.t.id, nombre: f.t.nombre, doc: f.t.cedula || f.t.rif || '', cuenta: f.t.cuentaBanco || '', totalUSD: +f.totalUSD || 0, totalBs: +f.totalBs || 0 }; });
+    var txt = { registros: 0, totalBs: 0 };
+    R.filas.forEach(function (f) { if (f.esL && f.nb_totalBs > 0 && String(f.t.cuentaBanco || '').replace(/\D/g, '').length >= 20) { txt.registros++; txt.totalBs += (R.c.bncRedondear !== false ? Math.round(f.nb_totalBs) : f.nb_totalBs); } });
+    return { periodo_id: p.id, etiqueta: p.etiqueta, tasa: R.tasa, filas: filas,
+      granTotalUSD: filas.reduce(function (a, f) { return a + f.totalUSD; }, 0), granTotalBs: filas.reduce(function (a, f) { return a + f.totalBs; }, 0),
+      granTotalUSDApp: r2(R.granTotalUSD), granTotalBsApp: r2(R.granTotalBs), txt: { registros: txt.registros, totalBs: r2(txt.totalBs) },
+      pagoMovil: R.grupos.map(function (g) { return { nombre: g.nombre, totUSD: r2(g.totUSD), totBs: r2(g.totBs), n: g.n }; }) };
+  }
+  /* contexto de entrada congelado al aprobar: con él se recalcula el pago a la tasa del día de pago */
+  function contexto(p, R) {
+    var vac = {}, cuotas = {};
+    R.filas.forEach(function (f) {
+      vac[f.t.id] = { dias: (typeof window.vacDiasEnPeriodo === 'function') ? window.vacDiasEnPeriodo(f.t, p) : 0, pago: (typeof window.vacPagoEnPeriodo === 'function') ? window.vacPagoEnPeriodo(f.t, p) : 0 };
+      cuotas[f.t.id] = (f.cuotas || []).map(function (x) { return { prId: x.pr && x.pr.id, cuota: x.cuota }; });
+    });
+    return { trabajadores: R.filas.map(function (f) { return S.clon(f.t); }), config: S.clon(DB.config), coordinadores: S.clon(DB.coordinadores), vac: vac, cuotas: cuotas, lineas: S.clon(p.lineas || {}) };
+  }
+  /* recalcula con el contexto congelado (sin leer las fichas actuales) */
+  function calcCongelado(p, ctx, tasa) {
+    var o = { tr: DB.trabajadores, cfg: DB.config, co: DB.coordinadores, vd: window.vacDiasEnPeriodo, vp: window.vacPagoEnPeriodo, cu: window.cuotasDelTrabajador,
+              est: p.estado, t: p.tasaBCV, tp: p.tasaBCVPago, li: p.lineas, ci: p.cierre };
+    try {
+      DB.trabajadores = S.clon(ctx.trabajadores).map(function (t) { t.estado = 'activo'; return t; });
+      DB.config = S.clon(ctx.config); DB.coordinadores = S.clon(ctx.coordinadores);
+      window.vacDiasEnPeriodo = function (t) { return (ctx.vac[t.id] || {}).dias || 0; };
+      window.vacPagoEnPeriodo = function (t) { return (ctx.vac[t.id] || {}).pago || 0; };
+      cuotasDelTrabajador = function (tid) { return (ctx.cuotas[tid] || []).map(function (x) { var pr = (DB.prestamos || []).find(function (y) { return y.id === x.prId; }) || { id: x.prId }; return { pr: pr, cuota: x.cuota }; }); };
+      p.estado = 'borrador'; p.tasaBCV = tasa; p.tasaBCVPago = null; p.lineas = S.clon(ctx.lineas); delete p.cierre;
+      return calcVivo(p.id);
+    } finally {
+      DB.trabajadores = o.tr; DB.config = o.cfg; DB.coordinadores = o.co; window.vacDiasEnPeriodo = o.vd; window.vacPagoEnPeriodo = o.vp; cuotasDelTrabajador = o.cu;
+      p.estado = o.est; p.tasaBCV = o.t; p.tasaBCVPago = o.tp; p.lineas = o.li; if (o.ci) p.cierre = o.ci;
+    }
+  }
+  var calcVivo = null;
+  function instalarCalculo() {
+    calcVivo = calcPeriodo;
+    calcPeriodo = function (pid) {
+      var p = pid ? DB.periodos.find(function (x) { return x.id === pid; }) : per();
+      if (p && (p.estado === 'aprobada' || p.estado === 'pagada') && p.cierre && p.cierre.R) return rehidratar(p, p.cierre.R);
+      return calcVivo(pid);
+    };
+    /* linea() no debe crear ni normalizar líneas de un período cerrado al dibujarlo */
+    var lineaViva = linea;
+    linea = function (tid) {
+      var p = per();
+      if (p && p.estado !== 'borrador') {
+        var L = (p.lineas && p.lineas[tid]) ? S.clon(p.lineas[tid]) : { faltas: 0, prestamos: 0, diasExtra: 0, vacaciones: 0, utilidades: 0, transpModo: 'igual', faltasTransporte: 0, bonoProduccion: 0, obs: '' };
+        if (L.transpModo == null) L.transpModo = 'igual'; if (L.faltasTransporte == null) L.faltasTransporte = 0; if (L.bonoProduccion == null) L.bonoProduccion = 0;
+        return L;
+      }
+      return lineaViva(tid);
+    };
+  }
+  function cierreDe(p, tipo, R, ctx) {
+    var C = { tipo: tipo, calcVersion: CALC_VERSION, en: new Date().toISOString(), por: Auth.correo ? Auth.correo() : '', R: compactar(R), resumen: resumen(p, R) };
+    if (ctx && !nube()) C.ctx = ctx;         // en la nube el contexto vive en nomina_cierres
+    return C;
+  }
+  /* operación del administrador: se prepara sobre una copia, se envía al servidor y solo
+     si la acepta queda en pantalla. Si el servidor la rechaza, no cambia nada. */
+  function operar(accion, p, preparar, motivo) {
+    if (!Auth.esAdmin()) { toast('Solo el administrador puede aprobar, pagar o revertir la nómina', 'err'); return Promise.resolve(false); }
+    var antes = S.clon(DB), snap = null, res = null;
+    enTransicion = true;
+    var listo = function () { enTransicion = false; };
+    return esperarGuardado().catch(function () {}).then(function () {
+      var x = preparar();                      // muta DB/p como antes y devuelve {snapshot, resumen}
+      snap = x && x.snapshot; res = x && x.resumen;
+      if (!nube()) { listo(); save(); return true; }
+      var op = S.uuid();
+      return fetch(Cloud.rest() + 'rpc/nomina_transicion', { method: 'POST', headers: Cloud.headers(),
+        body: JSON.stringify({ p_accion: accion, p_periodo: p.id, p_version: doc.version, p_data: DB, p_snapshot: snap, p_resumen: res, p_motivo: motivo || null, p_op: op }) })
+        .then(function (r) { return r.text().then(function (t) { var j = null; try { j = t ? JSON.parse(t) : null; } catch (e) {} if (!r.ok) throw Error((j && j.message) || ('HTTP ' + r.status)); return j; }); })
+        .then(function (j) { doc.version = j.version; doc.base = S.clon(DB); listo(); cacheAjustes = {}; doc.poner('confirmado'); return true; },
+              function (e) { DB = antes; PER = p.id; listo(); render(); toast('El servidor no aceptó la operación: ' + e.message, 'err'); if (/CONFLICTO_VERSION/.test(e.message)) arrancarNube(); return false; });
+    });
+  }
+  function aprobar(fecha) {
+    var p = per(); if (p.estado !== 'borrador') return Promise.resolve(false);
+    return operar('aprobar', p, function () {
+      var R = calcVivo(p.id), ctx = contexto(p, R);
+      p.fechaPagoPrevista = fecha || p.fechaPagoPrevista; p.estado = 'aprobada'; p.aprobadaEn = hoy(); p.tasaBCVAprobacion = p.tasaBCV;
+      p.cierre = cierreDe(p, 'aprobar', R, ctx);
+      return { snapshot: { calcVersion: CALC_VERSION, ctx: ctx, R: p.cierre.R }, resumen: p.cierre.resumen };
+    }).then(function (ok) { if (ok) { closeModal(); render(); toast('Nómina aprobada — copia del cálculo congelada'); } return ok; });
+  }
+  function leerCtxAprobacion(p) {
+    if (!nube()) return Promise.resolve(p.cierre && p.cierre.ctx);
+    return fetch(Cloud.rest() + 'nomina_cierres?periodo_id=eq.' + encodeURIComponent(p.id) + '&tipo=eq.aprobar&select=snapshot&order=id.desc&limit=1', { headers: Cloud.headers() })
+      .then(function (r) { if (!r.ok) throw Error('No se pudo leer la copia de la aprobación (' + r.status + ')'); return r.json(); })
+      .then(function (L) { return L && L[0] && L[0].snapshot && L[0].snapshot.ctx; });
+  }
+  function pagar(fecha, tasa) {
+    var p = per(); if (p.estado !== 'aprobada') return Promise.resolve(false);
+    return leerCtxAprobacion(p).then(function (ctx) {
+      return operar('pagar', p, function () {
+        /* sin copia (aprobado antes de esta versión): se calcula en vivo, como antes */
+        var R = ctx ? calcCongelado(p, ctx, tasa) : (function () { var e = p.estado, t = p.tasaBCV; p.estado = 'borrador'; p.tasaBCV = tasa; delete p.cierre; try { return calcVivo(p.id); } finally { p.estado = e; p.tasaBCV = t; } })();
+        p.fechaPagoReal = fecha; p.tasaBCVPago = tasa;
+        registrarCuotas(p);   /* antes de marcarlo pagado: un período pagado solo cuenta lo registrado */
+        p.estado = 'pagada'; p.pagadaEn = hoy();
+        p.cierre = cierreDe(p, 'pagar', R, null);
+        if (!ctx) p.cierre.sinCopiaAprobacion = true;
+        return { snapshot: { calcVersion: CALC_VERSION, R: p.cierre.R, desdeAprobacion: !!ctx }, resumen: p.cierre.resumen };
+      });
+    }).then(function (ok) { if (ok) { closeModal(); render(); toast('Pago registrado — período cerrado a tasa ' + fN(tasa, 4)); } return ok; },
+            function (e) { toast(e.message, 'err'); return false; });
+  }
+  function revertir(a) {
+    var p = per();
+    var motivo = prompt(a === 'borrador' ? 'Motivo para devolver a borrador (queda en la auditoría):' : 'Motivo para reabrir el período pagado (queda en la auditoría):', '');
+    if (motivo == null) return; if (String(motivo).trim().length < 5) { toast('Indique el motivo (al menos 5 caracteres)', 'err'); return; }
+    operar(a === 'borrador' ? 'borrador' : 'reabrir', p, function () {
+      if (a === 'borrador') { p.estado = 'borrador'; p.aprobadaEn = ''; p.tasaBCVAprobacion = null; }
+      else { revertirCuotas(p); p.estado = 'aprobada'; p.fechaPagoReal = ''; p.tasaBCVPago = null; p.pagadaEn = ''; }
+      if (p.cierre) { p.cierreAnterior = { tipo: p.cierre.tipo, en: p.cierre.en, resumen: p.cierre.resumen }; }
+      if (a === 'borrador') delete p.cierre;
+      else if (p.cierre && p.cierre.tipo === 'pagar') { delete p.cierre; }
+      return null;
+    }, motivo).then(function (ok) { if (ok) { render(); toast(a === 'borrador' ? 'Período en borrador' : 'Período reabierto (la copia del pago queda en el servidor)'); } });
+  }
+  function congelarLegado() {
+    var p = per();
+    if (!(p.estado === 'aprobada' || p.estado === 'pagada') || p.cierre) return;
+    var motivo = prompt('Congelar «' + p.etiqueta + '» con los valores que muestra hoy.\n\nHágalo SOLO después de conciliarlo con los comprobantes de pago (o el respaldo de esa fecha).\nEscriba cómo lo verificó:', '');
+    if (motivo == null) return; if (String(motivo).trim().length < 5) { toast('Indique cómo lo verificó', 'err'); return; }
+    operar('congelar_legado', p, function () {
+      var R = calcVivo(p.id); p.cierre = cierreDe(p, 'congelar_legado', R, null); p.cierre.legado = true; p.cierre.verificacion = motivo;
+      return { snapshot: { calcVersion: CALC_VERSION, R: p.cierre.R, legado: true }, resumen: p.cierre.resumen };
+    }, motivo).then(function (ok) { if (ok) { render(); toast('Período congelado'); } });
+  }
+  function ajustar() {
+    var p = per(); if (p.estado !== 'pagada') return;
+    var R = calcPeriodo(); var opts = R.filas.map(function (f) { return '<option value="' + esc(f.t.id) + '">' + esc(f.t.nombre) + '</option>'; }).join('');
+    modal('Ajuste del período pagado', '<div class="note">El cierre original no cambia: el ajuste queda vinculado a él, con su motivo, en la auditoría.</div>' +
+      '<div class="grid g2"><div class="f"><label>Persona</label><select id="aj_t">' + opts + '</select></div>' +
+      '<div class="f"><label>Concepto</label><input id="aj_c" maxlength="80"></div>' +
+      '<div class="f"><label>Monto USD (negativo si es descuento)</label><input id="aj_m" type="number" step="0.01"></div>' +
+      '<div class="f"><label>Motivo</label><input id="aj_mot" maxlength="200"></div></div>',
+      '<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn p" onclick="Integridad.confirmarAjuste()">Registrar ajuste</button>');
+  }
+  function confirmarAjuste() {
+    var p = per(), R = calcPeriodo(), tid = document.getElementById('aj_t').value, f = R.filas.find(function (x) { return x.t.id === tid; });
+    var m = +document.getElementById('aj_m').value, c = document.getElementById('aj_c').value.trim(), mot = document.getElementById('aj_mot').value.trim();
+    if (!f || !m || !c || mot.length < 5) { toast('Complete persona, concepto, monto y motivo', 'err'); return; }
+    var aj = { calcVersion: CALC_VERSION, tasa: R.tasa, lineas: [{ tid: tid, nombre: f.t.nombre, concepto: c, montoUSD: m, montoBs: Math.round(m * R.tasa * 100) / 100 }], totalUSD: m, totalBs: Math.round(m * R.tasa * 100) / 100 };
+    if (!nube()) { (DB.ajustesCierre = DB.ajustesCierre || []).push({ periodo: p.id, ajuste: aj, motivo: mot, en: new Date().toISOString() }); save(); closeModal(); render(); toast('Ajuste registrado'); return; }
+    fetch(Cloud.rest() + 'rpc/nomina_ajustar', { method: 'POST', headers: Cloud.headers(), body: JSON.stringify({ p_periodo: p.id, p_ajuste: aj, p_motivo: mot, p_op: S.uuid() }) })
+      .then(function (r) { return r.text().then(function (t) { var j = null; try { j = JSON.parse(t); } catch (e) {} if (!r.ok) throw Error((j && j.message) || r.status); }); })
+      .then(function () { closeModal(); toast('Ajuste registrado en el servidor'); ajustesDe(p.id, true); }, function (e) { toast('No se registró: ' + e.message, 'err'); });
+  }
+  var cacheAjustes = {};
+  function ajustesDe(pid, refrescar) {
+    if (!nube()) return Promise.resolve((DB.ajustesCierre || []).filter(function (a) { return a.periodo === pid; }).map(function (a) { return { motivo: a.motivo, created_at: a.en, snapshot: a.ajuste, tipo: 'ajuste' }; }));
+    if (cacheAjustes[pid] && !refrescar) return Promise.resolve(cacheAjustes[pid]);
+    return fetch(Cloud.rest() + 'nomina_cierres?periodo_id=eq.' + encodeURIComponent(pid) + '&select=tipo,motivo,created_at,actor_email,snapshot,resumen&order=id', { headers: Cloud.headers() })
+      .then(function (r) { return r.ok ? r.json() : []; }).then(function (L) { cacheAjustes[pid] = L; var el = document.getElementById('cvHistCierre'); if (el) pintarHistorial(el, L); return L; });
+  }
+  function pintarHistorial(el, L) {
+    if (!L || !L.length) { el.textContent = ''; return; }
+    el.innerHTML = '<div style="font-size:12px;margin-top:6px"><b>Trazabilidad del cierre:</b> ' + L.map(function (x) {
+      var n = { aprobar: 'aprobado', pagar: 'pagado', borrador: 'devuelto a borrador', reabrir: 'reabierto', ajuste: 'ajuste', congelar_legado: 'congelado tras conciliar', restaurar: 'restauración' }[x.tipo] || x.tipo;
+      return esc(n) + ' ' + esc(String(x.created_at || '').slice(0, 16).replace('T', ' ')) + (x.actor_email ? ' por ' + esc(x.actor_email) : '') + (x.motivo ? ' («' + esc(x.motivo) + '»)' : '') +
+        (x.tipo === 'ajuste' && x.snapshot ? ' · ' + esc((x.snapshot.lineas || []).map(function (l) { return l.nombre + ' ' + l.concepto + ' ' + fUsd(l.montoUSD); }).join('; ')) : '');
+    }).join(' · ') + '</div>';
+  }
+  /* banda informativa en las vistas de un período cerrado */
+  function banda() {
+    var p = DB && per(); if (!p || p.estado === 'borrador') return '';
+    var h = '';
+    if (p.cierre) h = '<div class="note ok" style="margin-bottom:10px">🔒 Copia del cierre (' + esc({ aprobar: 'aprobación', pagar: 'pago', congelar_legado: 'conciliado' }[p.cierre.tipo] || p.cierre.tipo) + ' · ' + esc(String(p.cierre.en || '').slice(0, 10)) + ', cálculo ' + esc(p.cierre.calcVersion) + '): los cambios posteriores en fichas, sueldos o cuentas no la alteran.';
+    else h = '<div class="note warn" style="margin-bottom:10px">⚠ Período ' + esc(p.estado) + ' <b>sin copia de cierre</b> (anterior a esta versión): se recalcula con los datos actuales y puede no coincidir con lo pagado. Concílielo con los comprobantes o el respaldo de esa fecha' + (Auth.esAdmin() ? ' y luego <button class="btn sm" onclick="Integridad.congelarLegado()">Congelar tras conciliar</button>' : '') + '.';
+    if (p.estado === 'pagada' && Auth.esAdmin()) h += ' <button class="btn sm" onclick="Integridad.ajustar()">Registrar ajuste</button>';
+    h += '<div id="cvHistCierre"></div></div>';
+    setTimeout(function () { var el = document.getElementById('cvHistCierre'); if (el) ajustesDe(p.id).then(function (L) { pintarHistorial(el, L); }); }, 0);
+    return h;
+  }
+  function avisoLegado() {
+    if (!Auth.esAdmin() || !DB) return;
+    var L = DB.periodos.filter(function (p) { return (p.estado === 'pagada' || p.estado === 'aprobada') && !p.cierre; });
+    if (L.length) toast(L.length + ' período(s) cerrado(s) sin copia de cierre: concílielos antes de congelarlos', 'warn');
+  }
+
+  /* ---------- 5. respaldo y restauración ---------- */
+  function validarNomina(d) {
+    var e = [];
+    if (!d || typeof d !== 'object' || Array.isArray(d)) return ['no es un objeto JSON'];
+    if (!d.config || typeof d.config !== 'object') e.push('falta config');
+    ['trabajadores', 'periodos'].forEach(function (k) { if (!Array.isArray(d[k])) e.push('falta la lista ' + k); });
+    if (d.prestamos != null && !Array.isArray(d.prestamos)) e.push('prestamos no es una lista');
+    if (Array.isArray(d.trabajadores)) d.trabajadores.forEach(function (t, i) { if (!t || !t.id || !t.nombre) e.push('trabajador ' + (i + 1) + ' sin id o nombre'); });
+    if (Array.isArray(d.periodos)) d.periodos.forEach(function (p, i) { if (!p || !p.id) e.push('período ' + (i + 1) + ' sin id'); });
+    return e;
+  }
+  function descargarRespaldo() {
+    if (!nube()) { S.descargarJSON('Respaldo_Nomina_local_' + hoy() + '.json', { _respaldo: { app: 'nomina', origen: 'local', fecha: new Date().toISOString() }, data: DB }); return; }
+    fetch(Cloud.rest() + SB.table + '?id=eq.1&select=data,version,updated_at', { headers: Cloud.headers(), cache: 'no-store' })
+      .then(function (r) { if (!r.ok) throw Error('el servidor respondió ' + r.status); return r.json(); })
+      .then(function (rows) {
+        if (!Array.isArray(rows) || rows.length !== 1) throw Error('respuesta sin el documento (¿sin acceso?)');
+        var d = rows[0].data, err = validarNomina(d);
+        if (err.length) throw Error('el documento recibido no es válido: ' + err.slice(0, 3).join('; '));
+        var meta = { app: 'nomina', version: rows[0].version, actualizado: rows[0].updated_at, descargado: new Date().toISOString(), trabajadores: d.trabajadores.length, periodos: d.periodos.length, prestamos: (d.prestamos || []).length };
+        S.descargarJSON('Respaldo_Nomina_v' + rows[0].version + '_' + hoy() + '.json', { _respaldo: meta, data: d });
+        alert('Respaldo descargado.\n\nVersión ' + meta.version + ' del ' + String(meta.actualizado).slice(0, 16).replace('T', ' ') + '\n' + meta.trabajadores + ' trabajadores · ' + meta.periodos + ' períodos · ' + meta.prestamos + ' préstamos');
+      })
+      .catch(function (e) { alert('NO se generó el respaldo: ' + e.message); });
+  }
+  function abrirRestaurar() {
+    var i = document.createElement('input'); i.type = 'file'; i.accept = '.json,application/json';
+    i.onchange = function () { if (i.files[0]) restaurarArchivo(i.files[0]); }; i.click();
+  }
+  function restaurarArchivo(file) {
+    if (!Auth.esAdmin()) { alert('Solo el administrador restaura respaldos'); return; }
+    var fr = new FileReader();
+    fr.onload = function () {
+      var obj; try { obj = JSON.parse(fr.result); } catch (e) { alert('Archivo inválido: ' + e.message); return; }
+      var d = obj && obj._respaldo && obj.data ? obj.data : obj, meta = obj && obj._respaldo || {};
+      var err = validarNomina(d);
+      if (err.length) { alert('No se puede restaurar: el archivo no tiene la estructura completa de la nómina.\n- ' + err.slice(0, 8).join('\n- ')); return; }
+      var res = d.trabajadores.length + ' trabajadores · ' + d.periodos.length + ' períodos · ' + (d.prestamos || []).length + ' préstamos' + (meta.actualizado ? '\nDatos del ' + String(meta.actualizado).slice(0, 16).replace('T', ' ') : '');
+      var motivo = prompt('RESTAURAR reemplaza la nómina del servidor por la del archivo:\n' + res + '\n\nAntes se guardará en el servidor una copia de la versión actual.\nEscriba el motivo para continuar:', '');
+      if (motivo == null) return; if (String(motivo).trim().length < 5) { alert('Indique el motivo (al menos 5 caracteres)'); return; }
+      if (!nube()) { DB = migrar(d); save(); render(); alert('Restaurado en este navegador'); return; }
+      var hacer = function (ver) {
+        return fetch(Cloud.rest() + 'rpc/nomina_restaurar', { method: 'POST', headers: Cloud.headers(), body: JSON.stringify({ p_version: ver, p_data: d, p_motivo: motivo, p_op: S.uuid() }) })
+          .then(function (r) { return r.text().then(function (t) { var j = null; try { j = JSON.parse(t); } catch (e) {} if (!r.ok) throw Error((j && j.message) || ('HTTP ' + r.status)); return j; }); });
+      };
+      (doc ? doc.esperar().catch(function () {}) : Promise.resolve()).then(function () { return hacer(doc && doc.version != null ? doc.version : 0); })
+        .then(function (j) { alert('Restaurado. Versión ' + j.version + '. Copia previa guardada en el servidor (n.º ' + j.respaldo_previo + '). La página se recargará.'); location.reload(); })
+        .catch(function (e) { alert('No se restauró: ' + e.message); });
+    };
+    fr.readAsText(file);
+  }
+
+  /* ---------- cerrar sesión ---------- */
+  function antesDeSalir() {
+    var sinEnviar = doc && (doc.hayPendiente() || (DB && doc.cargado && Auth.puedeEscribir() && !S.igual(DB, migrar(S.clon(doc.base)))));
+    if (sinEnviar && !confirm('Hay cambios que el servidor aún no confirmó. Si cierra la sesión se descartan.\n\n¿Cerrar la sesión igual?')) return false;
+    if (doc) doc.borrarPendLocal();
+    S.limpiarLocal([KEY, 'caleva_pend_'], null);
+    DB = null; return true;
+  }
+
+  return { arrancar: arrancar, arrancarNube: arrancarNube, guardarNube: guardarNube, esperarGuardado: esperarGuardado, instalarCalculo: instalarCalculo,
+    aprobar: aprobar, pagar: pagar, revertir: revertir, congelarLegado: congelarLegado, ajustar: ajustar, confirmarAjuste: confirmarAjuste, banda: banda,
+    descargarRespaldo: descargarRespaldo, abrirRestaurar: abrirRestaurar, restaurarArchivo: restaurarArchivo, validarNomina: validarNomina,
+    inicializarVacio: inicializarVacio, antesDeSalir: antesDeSalir, enviarAuditoria: enviarAuditoria, doc: function () { return doc; },
+    CALC_VERSION: CALC_VERSION, _calcVivo: function (pid) { return calcVivo(pid); } };
+})();
+
+/* períodos cerrados desde su copia; banda de cierre en las vistas del período */
+Integridad.instalarCalculo();
+(function(){ var r=render; render=function(){ if(!DB){ return; } r(); try{ if(["dash","quincena","nominas","txt"].indexOf(VIEW)>=0){ var v=document.getElementById("view"); var b=Integridad.banda(); if(b&&v) v.insertAdjacentHTML("afterbegin", b); } }catch(e){} }; })();
+boot();
 </script>
 </body>
 </html>
